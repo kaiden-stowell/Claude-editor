@@ -3,343 +3,285 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Editor — AI Video Editor</title>
+    <title>Claude Editor</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div id="app">
-        <!-- Top Bar -->
-        <header class="topbar">
-            <div class="topbar-left">
+        <!-- Toolbar -->
+        <header class="toolbar">
+            <div class="toolbar-left">
                 <div class="logo">
-                    <span class="logo-icon">CE</span>
+                    <span class="logo-icon">&#9654;</span>
                     <span class="logo-text">Claude Editor</span>
-                    <span class="logo-version" id="app-version"></span>
+                </div>
+                <div class="toolbar-divider"></div>
+                <button class="tool-btn" onclick="document.getElementById('import-input').click()" title="Import Media">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v10M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12v2h12v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span>Import</span>
+                </button>
+                <input type="file" id="import-input" accept="video/*" onchange="handleImport(this)" hidden multiple>
+            </div>
+            <div class="toolbar-center">
+                <div class="view-tabs">
+                    <button class="view-tab active" data-view="edit" onclick="switchView('edit')">Edit</button>
+                    <button class="view-tab" data-view="color" onclick="switchView('color')">Color</button>
+                    <button class="view-tab" data-view="export" onclick="switchView('export')">Export</button>
                 </div>
             </div>
-            <div class="topbar-center">
-                <div class="status-bar">
-                    <span id="connection-dot" class="dot dot-checking"></span>
-                    <span id="connection-text">Checking system...</span>
+            <div class="toolbar-right">
+                <div class="system-status">
+                    <span id="connection-dot" class="status-dot checking"></span>
+                    <span id="connection-text" class="status-text">Checking...</span>
                 </div>
-            </div>
-            <div class="topbar-right">
-                <button class="btn btn-ghost" onclick="showPanel('agent')">Agent API</button>
-                <button class="btn btn-ghost" onclick="showPanel('brand')">Brand</button>
+                <button class="tool-btn" onclick="toggleInspector()" title="Toggle Inspector">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="1" x2="10" y2="15" stroke="currentColor" stroke-width="1.2"/></svg>
+                </button>
             </div>
         </header>
 
-        <!-- Main Content -->
-        <main class="workspace">
-            <!-- Left Panel: Steps -->
-            <aside class="panel panel-left" id="steps-panel">
-                <div class="panel-header">Workflow</div>
-
-                <!-- Step 1: Example Video -->
-                <div class="step" id="step-1">
-                    <div class="step-header" onclick="toggleStep(1)">
-                        <span class="step-num">1</span>
-                        <span class="step-title">Example Video</span>
-                        <span class="step-status" id="step1-status"></span>
-                    </div>
-                    <div class="step-body" id="step1-body">
-                        <p class="step-desc">Upload a video that shows the editing style you want. The AI will learn its pacing, cuts, colors, and vibe.</p>
-                        <div class="dropzone" id="dropzone-example" ondrop="handleDrop(event, 'example')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-                            <div class="dropzone-content">
-                                <div class="dropzone-icon">&#9654;</div>
-                                <div class="dropzone-text">Drop example video here</div>
-                                <div class="dropzone-sub">or click to browse</div>
-                            </div>
-                            <input type="file" accept="video/*" onchange="handleFileSelect(this, 'example')" hidden>
+        <!-- Main Layout -->
+        <main class="layout">
+            <!-- Top Section: Browser + Viewer + Inspector -->
+            <div class="top-section">
+                <!-- Browser Panel -->
+                <div class="browser-panel" id="browser-panel">
+                    <div class="panel-toolbar">
+                        <div class="panel-tabs">
+                            <button class="panel-tab active" data-tab="media" onclick="switchBrowserTab('media')">Media</button>
+                            <button class="panel-tab" data-tab="brands" onclick="switchBrowserTab('brands')">Brands</button>
+                            <button class="panel-tab" data-tab="jobs" onclick="switchBrowserTab('jobs')">Jobs</button>
                         </div>
-                        <div class="file-info" id="example-info" style="display:none"></div>
+                        <button class="icon-btn" onclick="document.getElementById('import-input').click()" title="Add media">+</button>
                     </div>
-                </div>
 
-                <!-- Step 2: Raw Footage -->
-                <div class="step" id="step-2">
-                    <div class="step-header" onclick="toggleStep(2)">
-                        <span class="step-num">2</span>
-                        <span class="step-title">Raw Footage</span>
-                        <span class="step-status" id="step2-status"></span>
-                    </div>
-                    <div class="step-body" id="step2-body">
-                        <p class="step-desc">Upload your raw footage. The AI will transcribe what you're saying and understand what you're doing.</p>
-                        <div class="dropzone" id="dropzone-raw" ondrop="handleDrop(event, 'raw')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-                            <div class="dropzone-content">
-                                <div class="dropzone-icon">&#127909;</div>
-                                <div class="dropzone-text">Drop raw footage here</div>
-                                <div class="dropzone-sub">or click to browse</div>
-                            </div>
-                            <input type="file" accept="video/*" onchange="handleFileSelect(this, 'raw')" hidden>
-                        </div>
-                        <div class="file-info" id="raw-info" style="display:none"></div>
-                    </div>
-                </div>
-
-                <!-- Step 3: Settings -->
-                <div class="step" id="step-3">
-                    <div class="step-header" onclick="toggleStep(3)">
-                        <span class="step-num">3</span>
-                        <span class="step-title">Edit Settings</span>
-                        <span class="step-status" id="step3-status"></span>
-                    </div>
-                    <div class="step-body" id="step3-body">
-                        <div class="form-group">
-                            <label>Output Format</label>
-                            <div class="format-options">
-                                <button class="format-btn active" data-format="reel" onclick="selectFormat(this)">
-                                    <div class="format-preview format-reel"></div>
-                                    <span>Reel 9:16</span>
-                                </button>
-                                <button class="format-btn" data-format="landscape" onclick="selectFormat(this)">
-                                    <div class="format-preview format-landscape"></div>
-                                    <span>Wide 16:9</span>
-                                </button>
-                                <button class="format-btn" data-format="square" onclick="selectFormat(this)">
-                                    <div class="format-preview format-square"></div>
-                                    <span>Square 1:1</span>
-                                </button>
+                    <div class="browser-content" id="tab-media">
+                        <div class="media-grid" id="media-grid">
+                            <div class="empty-state" id="media-empty">
+                                <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect x="4" y="7" width="28" height="22" rx="3" stroke="currentColor" stroke-width="1.5"/><polygon points="14,13 14,23 24,18" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>
+                                <span>Import media to get started</span>
+                                <small>Drag files here or click Import</small>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Brand Preset</label>
-                            <select id="brand-select" onchange="selectBrand(this.value)">
-                                <option value="default">Default</option>
-                                <option value="clean-white">Clean White</option>
-                                <option value="bold-dark">Bold Dark</option>
-                                <option value="neon-pop">Neon Pop</option>
-                                <option value="minimal">Minimal</option>
-                                <option value="warm-creator">Warm Creator</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Instructions <span class="optional">(optional)</span></label>
-                            <textarea id="instructions" placeholder="e.g. Make it energetic and fun, focus on the product demo parts, keep it under 30 seconds..."></textarea>
+                    </div>
+
+                    <div class="browser-content" id="tab-brands" style="display:none">
+                        <div class="brands-list" id="brands-list"></div>
+                    </div>
+
+                    <div class="browser-content" id="tab-jobs" style="display:none">
+                        <div class="jobs-list" id="jobs-list">
+                            <div class="empty-state"><span>No jobs yet</span></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 4: Premium Features -->
-                <div class="step" id="step-4">
-                    <div class="step-header" onclick="toggleStep(4)">
-                        <span class="step-num">4</span>
-                        <span class="step-title">Premium Features</span>
-                        <span class="step-status" id="step4-status"></span>
+                <!-- Viewer -->
+                <div class="viewer-panel" id="viewer-panel">
+                    <div class="viewer-header">
+                        <span class="viewer-title" id="viewer-title">Viewer</span>
+                        <span class="viewer-timecode" id="viewer-timecode">00:00:00:00</span>
                     </div>
-                    <div class="step-body" id="step4-body">
-                        <div class="form-group">
-                            <label>Color Grade (LUT)</label>
-                            <select id="premium-lut">
-                                <option value="auto">Auto (AI chooses)</option>
-                                <option value="none">None</option>
-                                <option value="cinematic-warm">Cinematic Warm</option>
-                                <option value="cinematic-cool">Cinematic Cool (Teal & Orange)</option>
-                                <option value="moody-dark">Moody Dark</option>
-                                <option value="vintage-film">Vintage Film</option>
-                                <option value="vibrant">Vibrant</option>
-                                <option value="golden-hour">Golden Hour</option>
-                                <option value="cyberpunk">Cyberpunk</option>
-                                <option value="pastel">Pastel</option>
-                                <option value="high-contrast">High Contrast</option>
-                                <option value="black-white">Black & White</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Caption Style</label>
-                            <select id="premium-captions">
-                                <option value="auto">Auto (AI chooses)</option>
-                                <option value="word-highlight">Word-by-Word Highlight</option>
-                                <option value="outline">Bold Outline</option>
-                                <option value="glow">Glow Effect</option>
-                                <option value="standard">Standard Box</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Film Grain</label>
-                            <select id="premium-grain">
-                                <option value="auto">Auto (AI chooses)</option>
-                                <option value="none">None</option>
-                                <option value="light">Light</option>
-                                <option value="medium">Medium</option>
-                                <option value="heavy">Heavy</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Audio Processing</label>
-                            <div class="checkbox-group">
-                                <label class="checkbox"><input type="checkbox" id="premium-normalize" checked> Normalize volume</label>
-                                <label class="checkbox"><input type="checkbox" id="premium-denoise" checked> Noise reduction</label>
-                                <label class="checkbox"><input type="checkbox" id="premium-voice"> Voice enhance</label>
-                                <label class="checkbox"><input type="checkbox" id="premium-vignette"> Vignette effect</label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Export Platform</label>
-                            <select id="premium-platform">
-                                <option value="auto">Auto (best quality)</option>
-                                <option value="tiktok">TikTok / Reels</option>
-                                <option value="youtube-shorts">YouTube Shorts</option>
-                                <option value="youtube-hd">YouTube HD 1080p</option>
-                                <option value="youtube-4k">YouTube 4K</option>
-                                <option value="instagram-reel">Instagram Reel</option>
-                                <option value="instagram-post">Instagram Post (Square)</option>
-                                <option value="twitter">Twitter/X</option>
-                                <option value="linkedin">LinkedIn</option>
-                                <option value="web-optimized">Web (Small File)</option>
-                                <option value="pro-master">Pro Master (Best Quality)</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Process Button -->
-                <div class="step-action">
-                    <button class="btn btn-primary btn-lg" id="btn-process" onclick="startProcessing()" disabled>
-                        Start AI Edit
-                    </button>
-                </div>
-            </aside>
-
-            <!-- Center: Preview & Timeline -->
-            <section class="center-panel">
-                <!-- Preview Monitor -->
-                <div class="preview-monitor">
-                    <div class="monitor-frame" id="monitor">
-                        <div class="monitor-placeholder" id="monitor-placeholder">
-                            <div class="monitor-logo">CE</div>
-                            <div class="monitor-text">Upload an example video and raw footage to get started</div>
+                    <div class="viewer-canvas" id="viewer-canvas">
+                        <div class="viewer-placeholder" id="viewer-placeholder">
+                            <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><rect x="6" y="10" width="44" height="36" rx="4" stroke="currentColor" stroke-width="1.5"/><polygon points="22,18 22,38 38,28" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>
+                            <span>No Clip Selected</span>
                         </div>
                         <video id="preview-video" controls style="display:none"></video>
                     </div>
-                </div>
-
-                <!-- Progress Bar (shown during processing) -->
-                <div class="progress-container" id="progress-container" style="display:none">
-                    <div class="progress-header">
-                        <span id="progress-stage">Initializing...</span>
-                        <span id="progress-percent">0%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-                    </div>
-                    <div class="progress-steps">
-                        <div class="p-step" id="pstep-analyze"><span class="p-dot"></span> Analyze Style</div>
-                        <div class="p-step" id="pstep-transcribe"><span class="p-dot"></span> Transcribe</div>
-                        <div class="p-step" id="pstep-plan"><span class="p-dot"></span> AI Director</div>
-                        <div class="p-step" id="pstep-render"><span class="p-dot"></span> Render</div>
+                    <div class="viewer-controls">
+                        <button class="transport-btn" onclick="transportAction('start')">&#9198;</button>
+                        <button class="transport-btn" onclick="transportAction('back')">&#9194;</button>
+                        <button class="transport-btn play-btn" onclick="transportAction('play')" id="btn-play">&#9654;</button>
+                        <button class="transport-btn" onclick="transportAction('forward')">&#9193;</button>
+                        <button class="transport-btn" onclick="transportAction('end')">&#9197;</button>
                     </div>
                 </div>
 
-                <!-- Timeline (shown after processing) -->
-                <div class="timeline-container" id="timeline-container" style="display:none">
-                    <div class="timeline-header">
-                        <span class="timeline-title">Timeline</span>
-                        <span class="timeline-info" id="timeline-info"></span>
-                    </div>
-                    <div class="timeline" id="timeline"></div>
-                </div>
-
-                <!-- Results (shown after processing) -->
-                <div class="results-container" id="results-container" style="display:none">
-                    <div class="result-card">
-                        <div class="result-header">
-                            <span class="result-title" id="result-title"></span>
-                        </div>
-                        <div class="result-meta" id="result-meta"></div>
-                        <div class="result-premium" id="result-premium"></div>
-                        <div class="result-actions">
-                            <button class="btn btn-primary" id="btn-download" onclick="downloadVideo()">Download Video</button>
-                            <button class="btn btn-ghost" onclick="exportForPlatform()">Export for Platform</button>
-                            <button class="btn btn-ghost" onclick="generateThumbnail()">Thumbnail</button>
-                            <button class="btn btn-ghost" onclick="showEditPlan()">Edit Plan</button>
-                            <button class="btn btn-ghost" onclick="resetWorkflow()">New Edit</button>
+                <!-- Inspector -->
+                <div class="inspector-panel" id="inspector-panel">
+                    <div class="panel-toolbar">
+                        <div class="panel-tabs">
+                            <button class="panel-tab active" data-tab="settings" onclick="switchInspectorTab('settings')">Settings</button>
+                            <button class="panel-tab" data-tab="effects" onclick="switchInspectorTab('effects')">Effects</button>
+                            <button class="panel-tab" data-tab="api" onclick="switchInspectorTab('api')">API</button>
                         </div>
                     </div>
-                </div>
-            </section>
 
-            <!-- Right Panel: Overlays -->
-            <aside class="panel panel-right" id="panel-right" style="display:none">
-                <!-- Brand Panel -->
-                <div id="brand-panel" style="display:none">
-                    <div class="panel-header">
-                        Brand Settings
-                        <button class="btn-close" onclick="hidePanel()">&times;</button>
-                    </div>
-                    <div class="panel-body">
-                        <div class="form-group">
-                            <label>Primary Color</label>
-                            <div class="color-row">
-                                <input type="color" id="brand-primary" value="#FFFFFF">
-                                <input type="text" id="brand-primary-hex" value="#FFFFFF" class="color-hex">
+                    <!-- Settings -->
+                    <div class="inspector-content" id="inspector-settings">
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)">
+                                <span>Output Format</span>
+                                <span class="chevron">&#9660;</span>
+                            </div>
+                            <div class="section-body">
+                                <div class="format-grid">
+                                    <button class="format-card active" data-format="reel" onclick="selectFormat(this)">
+                                        <div class="format-icon fmt-reel"></div>
+                                        <span>9:16</span>
+                                    </button>
+                                    <button class="format-card" data-format="landscape" onclick="selectFormat(this)">
+                                        <div class="format-icon fmt-landscape"></div>
+                                        <span>16:9</span>
+                                    </button>
+                                    <button class="format-card" data-format="square" onclick="selectFormat(this)">
+                                        <div class="format-icon fmt-square"></div>
+                                        <span>1:1</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Accent Color (emphasis)</label>
-                            <div class="color-row">
-                                <input type="color" id="brand-accent" value="#FFD700">
-                                <input type="text" id="brand-accent-hex" value="#FFD700" class="color-hex">
+
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)">
+                                <span>Brand</span>
+                                <span class="chevron">&#9660;</span>
+                            </div>
+                            <div class="section-body">
+                                <select id="brand-select" class="fcp-select" onchange="selectBrand(this.value)">
+                                    <option value="default">Default</option>
+                                    <option value="clean-white">Clean White</option>
+                                    <option value="bold-dark">Bold Dark</option>
+                                    <option value="neon-pop">Neon Pop</option>
+                                    <option value="minimal">Minimal</option>
+                                    <option value="warm-creator">Warm Creator</option>
+                                </select>
+                                <div class="brand-editor">
+                                    <div class="prop-row">
+                                        <label>Primary</label>
+                                        <div class="color-input"><input type="color" id="brand-primary" value="#FFFFFF"><input type="text" id="brand-primary-hex" value="#FFFFFF" class="hex-input"></div>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Accent</label>
+                                        <div class="color-input"><input type="color" id="brand-accent" value="#FFD700"><input type="text" id="brand-accent-hex" value="#FFD700" class="hex-input"></div>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Position</label>
+                                        <select id="brand-position" class="fcp-select"><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Size</label>
+                                        <select id="brand-size" class="fcp-select"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Emphasis</label>
+                                        <select id="brand-emphasis" class="fcp-select"><option value="highlight">Highlight</option><option value="scale">Scale Up</option><option value="bold">Bold</option><option value="color">Color Change</option></select>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Background</label>
+                                        <select id="brand-bg" class="fcp-select"><option value="semi-transparent">Semi-transparent</option><option value="solid">Solid</option><option value="none">None</option></select>
+                                    </div>
+                                    <div class="prop-row">
+                                        <label>Name</label>
+                                        <input type="text" id="brand-name" class="fcp-input" placeholder="my-brand">
+                                    </div>
+                                    <button class="fcp-btn small" onclick="saveBrand()">Save Brand</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Caption Position</label>
-                            <select id="brand-position">
-                                <option value="bottom">Bottom</option>
-                                <option value="center">Center</option>
-                                <option value="top">Top</option>
-                            </select>
+
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)">
+                                <span>Instructions</span>
+                                <span class="chevron">&#9660;</span>
+                            </div>
+                            <div class="section-body">
+                                <textarea id="instructions" class="fcp-textarea" placeholder="e.g. Make it energetic and fun..."></textarea>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Caption Size</label>
-                            <select id="brand-size">
-                                <option value="small">Small</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="large">Large</option>
-                            </select>
+
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)">
+                                <span>Platform</span>
+                                <span class="chevron">&#9660;</span>
+                            </div>
+                            <div class="section-body">
+                                <select id="premium-platform" class="fcp-select">
+                                    <option value="auto">Auto (best quality)</option>
+                                    <option value="tiktok">TikTok / Reels</option>
+                                    <option value="youtube-shorts">YouTube Shorts</option>
+                                    <option value="youtube-hd">YouTube HD 1080p</option>
+                                    <option value="youtube-4k">YouTube 4K</option>
+                                    <option value="instagram-reel">Instagram Reel</option>
+                                    <option value="instagram-post">Instagram Post</option>
+                                    <option value="twitter">Twitter/X</option>
+                                    <option value="linkedin">LinkedIn</option>
+                                    <option value="web-optimized">Web (Small)</option>
+                                    <option value="pro-master">Pro Master</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Background</label>
-                            <select id="brand-bg">
-                                <option value="semi-transparent">Semi-transparent</option>
-                                <option value="solid">Solid</option>
-                                <option value="none">None</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Emphasis Style</label>
-                            <select id="brand-emphasis">
-                                <option value="highlight">Highlight</option>
-                                <option value="scale">Scale Up</option>
-                                <option value="bold">Bold</option>
-                                <option value="color">Color Change</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Brand Name</label>
-                            <input type="text" id="brand-name" placeholder="my-brand">
-                        </div>
-                        <button class="btn btn-primary" onclick="saveBrand()">Save Brand</button>
                     </div>
-                </div>
 
-                <!-- Agent API Panel -->
-                <div id="agent-panel" style="display:none">
-                    <div class="panel-header">
-                        Agent API
-                        <button class="btn-close" onclick="hidePanel()">&times;</button>
-                    </div>
-                    <div class="panel-body">
-                        <p class="panel-desc">Connect Claude Code or AgentHub to control this editor programmatically.</p>
-
-                        <div class="api-section">
-                            <h4>Server URL</h4>
-                            <code class="api-url" id="api-url">http://127.0.0.1:12795</code>
+                    <!-- Effects -->
+                    <div class="inspector-content" id="inspector-effects" style="display:none">
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)"><span>Color Grade</span><span class="chevron">&#9660;</span></div>
+                            <div class="section-body">
+                                <select id="premium-lut" class="fcp-select">
+                                    <option value="auto">Auto (AI chooses)</option>
+                                    <option value="none">None</option>
+                                    <option value="cinematic-warm">Cinematic Warm</option>
+                                    <option value="cinematic-cool">Cinematic Cool</option>
+                                    <option value="moody-dark">Moody Dark</option>
+                                    <option value="vintage-film">Vintage Film</option>
+                                    <option value="vibrant">Vibrant</option>
+                                    <option value="golden-hour">Golden Hour</option>
+                                    <option value="cyberpunk">Cyberpunk</option>
+                                    <option value="pastel">Pastel</option>
+                                    <option value="high-contrast">High Contrast</option>
+                                    <option value="black-white">Black &amp; White</option>
+                                </select>
+                            </div>
                         </div>
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)"><span>Captions</span><span class="chevron">&#9660;</span></div>
+                            <div class="section-body">
+                                <select id="premium-captions" class="fcp-select">
+                                    <option value="auto">Auto (AI chooses)</option>
+                                    <option value="word-highlight">Word-by-Word Highlight</option>
+                                    <option value="outline">Bold Outline</option>
+                                    <option value="glow">Glow Effect</option>
+                                    <option value="standard">Standard Box</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)"><span>Film Grain</span><span class="chevron">&#9660;</span></div>
+                            <div class="section-body">
+                                <select id="premium-grain" class="fcp-select">
+                                    <option value="auto">Auto (AI chooses)</option>
+                                    <option value="none">None</option>
+                                    <option value="light">Light</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="heavy">Heavy</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="inspector-section">
+                            <div class="section-header" onclick="toggleSection(this)"><span>Audio</span><span class="chevron">&#9660;</span></div>
+                            <div class="section-body">
+                                <div class="checkbox-list">
+                                    <label class="fcp-checkbox"><input type="checkbox" id="premium-normalize" checked><span>Normalize Volume</span></label>
+                                    <label class="fcp-checkbox"><input type="checkbox" id="premium-denoise" checked><span>Noise Reduction</span></label>
+                                    <label class="fcp-checkbox"><input type="checkbox" id="premium-voice"><span>Voice Enhance</span></label>
+                                    <label class="fcp-checkbox"><input type="checkbox" id="premium-vignette"><span>Vignette</span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                        <div class="api-section">
-                            <h4>Full Edit (Agent)</h4>
-                            <pre class="api-example">POST /api/agent/edit
+                    <!-- API -->
+                    <div class="inspector-content" id="inspector-api" style="display:none">
+                        <div class="inspector-section">
+                            <div class="section-header"><span>Server</span></div>
+                            <div class="section-body"><code class="api-url">http://127.0.0.1:12795</code></div>
+                        </div>
+                        <div class="inspector-section">
+                            <div class="section-header"><span>Full Edit</span></div>
+                            <div class="section-body">
+                                <pre class="api-code">POST /api/agent/edit
 {
   "example_video": "/path/to/example.mp4",
   "raw_footage": "/path/to/raw.mp4",
@@ -348,69 +290,108 @@
   "brand": "default",
   "wait": true
 }</pre>
+                            </div>
                         </div>
-
-                        <div class="api-section">
-                            <h4>Analyze Style</h4>
-                            <pre class="api-example">POST /api/agent/analyze
-{
-  "video": "/path/to/video.mp4"
-}</pre>
-                        </div>
-
-                        <div class="api-section">
-                            <h4>Transcribe</h4>
-                            <pre class="api-example">POST /api/agent/transcribe
-{
-  "video": "/path/to/video.mp4"
-}</pre>
-                        </div>
-
-                        <div class="api-section">
-                            <h4>Check Status</h4>
-                            <pre class="api-example">GET /api/status/{job_id}
-GET /api/stream/{job_id}  (SSE)
-GET /api/jobs</pre>
-                        </div>
-
-                        <div class="api-section">
-                            <h4>Download Result</h4>
-                            <pre class="api-example">GET /api/download/{job_id}</pre>
-                        </div>
-
-                        <div class="api-section">
-                            <h4>curl Example</h4>
-                            <pre class="api-example">curl -X POST http://127.0.0.1:12795/api/agent/edit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "example_video": "example.mp4",
-    "raw_footage": "raw.mp4",
-    "output_format": "reel",
-    "wait": true
-  }'</pre>
-                        </div>
-
-                        <div class="api-section">
-                            <h4>Health Check</h4>
-                            <pre class="api-example">GET /api/health
-GET /api/info</pre>
+                        <div class="inspector-section">
+                            <div class="section-header"><span>Endpoints</span></div>
+                            <div class="section-body">
+                                <pre class="api-code">GET  /api/health
+GET  /api/info
+POST /api/agent/edit
+POST /api/agent/analyze
+POST /api/agent/transcribe
+GET  /api/status/{job_id}
+GET  /api/stream/{job_id}
+GET  /api/download/{job_id}
+GET  /api/jobs
+GET  /api/brands
+PUT  /api/brands/{name}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </aside>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline-section" id="timeline-section">
+                <div class="timeline-toolbar">
+                    <div class="timeline-toolbar-left">
+                        <button class="fcp-btn primary" id="btn-process" onclick="startProcessing()" disabled>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="1,0 1,12 11,6"/></svg>
+                            Start AI Edit
+                        </button>
+                        <button class="fcp-btn" onclick="resetWorkflow()">New</button>
+                    </div>
+                    <div class="timeline-toolbar-center">
+                        <div class="timeline-progress" id="timeline-progress" style="display:none">
+                            <div class="progress-pipeline">
+                                <div class="pipeline-step" id="pstep-analyze"><span class="pip"></span>Analyze</div>
+                                <div class="pipeline-step" id="pstep-transcribe"><span class="pip"></span>Transcribe</div>
+                                <div class="pipeline-step" id="pstep-plan"><span class="pip"></span>AI Director</div>
+                                <div class="pipeline-step" id="pstep-render"><span class="pip"></span>Render</div>
+                            </div>
+                            <div class="progress-bar-wrap">
+                                <div class="progress-bar-fill" id="progress-fill"></div>
+                            </div>
+                            <span class="progress-label" id="progress-stage">Initializing...</span>
+                            <span class="progress-pct" id="progress-percent">0%</span>
+                        </div>
+                    </div>
+                    <div class="timeline-toolbar-right">
+                        <span class="timeline-info" id="timeline-info"></span>
+                    </div>
+                </div>
+
+                <div class="timeline-area" id="timeline-area">
+                    <div class="timeline-ruler" id="timeline-ruler"></div>
+                    <div class="timeline-tracks" id="timeline-tracks">
+                        <div class="track">
+                            <div class="track-header"><span class="track-badge v">V1</span><span class="track-name">Video</span></div>
+                            <div class="track-lane" id="track-video-lane">
+                                <div class="track-empty" id="video-track-hint">Drop example &amp; raw footage to begin</div>
+                            </div>
+                        </div>
+                        <div class="track">
+                            <div class="track-header"><span class="track-badge a">A1</span><span class="track-name">Audio</span></div>
+                            <div class="track-lane" id="track-audio-lane"></div>
+                        </div>
+                        <div class="track">
+                            <div class="track-header"><span class="track-badge t">T1</span><span class="track-name">Captions</span></div>
+                            <div class="track-lane" id="track-captions-lane"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="results-bar" id="results-bar" style="display:none">
+                    <div class="results-info">
+                        <span class="results-title" id="result-title"></span>
+                        <span class="results-meta" id="result-meta"></span>
+                        <div class="results-tags" id="result-premium"></div>
+                    </div>
+                    <div class="results-actions">
+                        <button class="fcp-btn primary" onclick="downloadVideo()">Download</button>
+                        <button class="fcp-btn" onclick="exportForPlatform()">Export</button>
+                        <button class="fcp-btn" onclick="generateThumbnail()">Thumbnail</button>
+                        <button class="fcp-btn" onclick="showEditPlan()">Edit Plan</button>
+                    </div>
+                </div>
+            </div>
         </main>
 
-        <!-- Edit Plan Modal -->
-        <div class="modal" id="edit-plan-modal" style="display:none">
+        <!-- Global Drop Overlay -->
+        <div class="drop-overlay" id="drop-overlay" style="display:none">
+            <div class="drop-overlay-inner">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><path d="M24 6v28M14 24l10 10 10-10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 38v4h36v-4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>Drop media to import</span>
+            </div>
+        </div>
+
+        <!-- Modal -->
+        <div class="modal-overlay" id="edit-plan-modal" style="display:none">
             <div class="modal-backdrop" onclick="closeModal()"></div>
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Edit Plan</h3>
-                    <button class="btn-close" onclick="closeModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <pre id="edit-plan-content"></pre>
-                </div>
+            <div class="modal-sheet">
+                <div class="modal-top"><h3>Edit Plan</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+                <div class="modal-body"><pre id="edit-plan-content"></pre></div>
             </div>
         </div>
     </div>
