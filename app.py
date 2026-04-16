@@ -264,6 +264,66 @@ def info():
     })
 
 
+# ─── Integration Manifest (for Agent Hub discovery) ──────────────────────────
+
+@app.route('/api/integration-manifest')
+def integration_manifest():
+    """Manifest endpoint for agent-hub auto-discovery."""
+    base_url = f"http://127.0.0.1:{Config.PORT}"
+    return jsonify({
+        'kind': 'local-hub',
+        'slug': 'claude-editor',
+        'name': 'Claude Editor',
+        'version': VERSION,
+        'base_url': base_url,
+        'mode': 'local',
+        'status': 'running',
+        'desc': f'AI video editor — upload an example video to teach editing style, then edit raw footage with captions, color grading, and effects. Running at {base_url}.',
+        'usage': '\n'.join([
+            f'Claude Editor is running locally at {base_url}. It edits videos by learning style from an example video and applying it to raw footage.',
+            '',
+            'FULL EDIT (main workflow):',
+            f'  curl -X POST {base_url}/api/agent/edit \\',
+            '    -H "Content-Type: application/json" \\',
+            '    -d \'{"example_video": "/path/to/example.mp4", "raw_footage": "/path/to/raw.mp4", "instructions": "Make it energetic", "output_format": "reel", "brand": "default", "wait": true}\'',
+            '',
+            'ANALYZE STYLE ONLY:',
+            f'  curl -X POST {base_url}/api/agent/analyze -H "Content-Type: application/json" -d \'{{"video": "/path/to/video.mp4"}}\'',
+            '',
+            'TRANSCRIBE ONLY:',
+            f'  curl -X POST {base_url}/api/agent/transcribe -H "Content-Type: application/json" -d \'{{"video": "/path/to/video.mp4"}}\'',
+            '',
+            'CHECK STATUS:',
+            f'  curl -s {base_url}/api/status/{{job_id}}',
+            f'  curl -s {base_url}/api/stream/{{job_id}}    # SSE stream for real-time progress',
+            '',
+            'DOWNLOAD RESULT:',
+            f'  curl -s {base_url}/api/download/{{job_id}} -o output.mp4',
+            '',
+            'LIST JOBS:',
+            f'  curl -s {base_url}/api/jobs',
+            '',
+            'BRANDS:',
+            f'  curl -s {base_url}/api/brands              # list brands',
+            f'  curl -X PUT {base_url}/api/brands/my-brand -H "Content-Type: application/json" -d \'{{"primary_color": "#FFFFFF", "accent_color": "#FFD700"}}\'',
+            '',
+            'EXPORT:',
+            f'  curl -X POST {base_url}/api/premium/export/{{job_id}} -H "Content-Type: application/json" -d \'{{"platform": "tiktok"}}\'',
+            f'  # platforms: tiktok, youtube-shorts, youtube-hd, youtube-4k, instagram-reel, instagram-post, twitter, linkedin, web-optimized, pro-master',
+            '',
+            'THUMBNAIL:',
+            f'  curl -X POST {base_url}/api/premium/thumbnail/{{job_id}} -H "Content-Type: application/json" -d \'{{}}\'',
+            '',
+            'HEALTH:',
+            f'  curl -s {base_url}/api/health',
+            '',
+            'OUTPUT FORMATS: reel (9:16), landscape (16:9), square (1:1)',
+            'LUTS: cinematic-warm, cinematic-cool, moody-dark, vintage-film, vibrant, golden-hour, cyberpunk, pastel, high-contrast, black-white',
+            'CAPTION STYLES: word-highlight, outline, glow, standard',
+        ]),
+    })
+
+
 # ─── Update Check & Apply ────────────────────────────────────────────────────
 
 REPO_API_URL = 'https://api.github.com/repos/kaiden-stowell/Claude-editor/contents/version.py?ref=main'
