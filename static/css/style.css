@@ -1150,6 +1150,155 @@ body {
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+/* ─── Bug Tracker ──────────────────────────────────────────────────────── */
+
+.bug-btn { position: relative; }
+.bug-count {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: var(--red);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.bug-sheet { max-width: 560px; }
+
+.bug-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.bug-form {
+    background: var(--bg-input);
+    border-radius: var(--radius);
+    padding: 12px;
+}
+.bug-form-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+}
+.bug-field {
+    margin-bottom: 8px;
+}
+.bug-field label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.bug-form-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.bug-list-section {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 12px;
+}
+.bug-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 8px;
+}
+.bug-list-hint {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-dim);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.bug-auto-count {
+    background: var(--bg-surface);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.bug-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.bug-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg-surface);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    border-left: 3px solid var(--text-dim);
+}
+.bug-entry.type-bug { border-left-color: var(--red); }
+.bug-entry.type-crash { border-left-color: var(--orange); }
+.bug-entry.type-ui-issue { border-left-color: var(--yellow); }
+.bug-entry.type-feature-request { border-left-color: var(--blue); }
+.bug-entry.type-auto-error { border-left-color: var(--orange); }
+.bug-entry.type-auto-api-error { border-left-color: var(--red); }
+
+.bug-entry.submitted { opacity: 0.5; }
+
+.bug-entry-info { flex: 1; min-width: 0; }
+.bug-entry-title {
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bug-entry-meta {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 1px;
+}
+.bug-entry-status {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.bug-entry-status.pending { background: rgba(255,153,0,0.15); color: var(--orange); }
+.bug-entry-status.submitted { background: rgba(76,217,100,0.15); color: var(--green); }
+
+.bug-entry-delete {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+.bug-entry-delete:hover { color: var(--red); }
+
 /* ─── Resize Handle ───────────────────────────────────────────────────── */
 
 .top-section { resize: vertical; overflow: hidden; }

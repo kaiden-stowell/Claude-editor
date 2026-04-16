@@ -334,7 +334,7 @@ def update_check():
 
 @app.route('/api/update/apply', methods=['POST'])
 def update_apply():
-    """Pull latest from GitHub and restart."""
+    """Submit pending bugs, pull latest from GitHub, and restart."""
     global _cached_remote_version, _last_version_check
 
     base_dir = Config.BASE_DIR
@@ -342,6 +342,38 @@ def update_apply():
 
     if not os.path.isdir(git_dir):
         return jsonify({'error': 'Not a git repo. Run the install script first.'}), 400
+
+    # Auto-submit pending bug reports before updating
+    try:
+        gh_bin = shutil.which('gh')
+        if gh_bin:
+            bugs = _load_bugs()
+            pending = [b for b in bugs if b.get('status') == 'pending']
+            if pending:
+                for bug in pending:
+                    body = f"**Type:** {bug.get('type', 'unknown')}\n"
+                    body += f"**Version:** {bug.get('context', {}).get('version', 'unknown')}\n"
+                    body += f"**Reported:** {bug.get('created_at', 'unknown')}\n\n"
+                    if bug.get('description'):
+                        body += f"## Description\n{bug['description']}\n\n"
+                    if bug.get('stack'):
+                        body += f"## Stack Trace\n```\n{bug['stack']}\n```\n"
+                    body += "\n---\n*Auto-submitted during update*"
+                    title = bug.get('title', 'Bug Report')[:256]
+                    try:
+                        r = subprocess.run(
+                            [gh_bin, 'issue', 'create', '--repo', GITHUB_REPO,
+                             '--title', f'[Auto] {title}', '--body', body, '--label', 'bug'],
+                            capture_output=True, text=True, timeout=15
+                        )
+                        if r.returncode == 0:
+                            bug['status'] = 'submitted'
+                            bug['github_url'] = r.stdout.strip()
+                    except Exception:
+                        pass
+                _save_bugs(bugs)
+    except Exception:
+        pass
 
     try:
         # Backup user data
@@ -413,6 +445,151 @@ def update_apply():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ─── Bug Tracking ────────────────────────────────────────────────────────────
+
+BUGS_FILE = os.path.join(Config.BASE_DIR, 'data', 'bugs.json')
+GITHUB_REPO = 'kaiden-stowell/Claude-editor'
+
+
+def _load_bugs():
+    try:
+        with open(BUGS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_bugs(bugs):
+    os.makedirs(os.path.dirname(BUGS_FILE), exist_ok=True)
+    with open(BUGS_FILE, 'w') as f:
+        json.dump(bugs, f, indent=2)
+
+
+@app.route('/api/bugs', methods=['GET'])
+def list_bugs():
+    return jsonify({'bugs': _load_bugs()})
+
+
+@app.route('/api/bugs', methods=['POST'])
+def report_bug():
+    data = request.get_json(silent=True) or {}
+    title = data.get('title', '').strip()
+    description = data.get('description', '').strip()
+    error_type = data.get('type', 'user-report')
+    stack = data.get('stack', '')
+    context = data.get('context', {})
+
+    if not title and not description and not stack:
+        return jsonify({'error': 'Provide a title, description, or error details'}), 400
+
+    bug = {
+        'id': str(uuid.uuid4())[:8],
+        'title': title or f'Auto-captured: {error_type}',
+        'description': description,
+        'type': error_type,
+        'stack': stack[:2000] if stack else '',
+        'context': {
+            'version': VERSION,
+            'platform': os.uname().sysname if hasattr(os, 'uname') else 'unknown',
+            'python': os.popen('python3 --version 2>&1').read().strip(),
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            **context,
+        },
+        'status': 'pending',
+        'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+    }
+
+    bugs = _load_bugs()
+    bugs.append(bug)
+    _save_bugs(bugs)
+
+    return jsonify({'ok': True, 'bug': bug}), 201
+
+
+@app.route('/api/bugs/<bug_id>', methods=['DELETE'])
+def delete_bug(bug_id):
+    bugs = _load_bugs()
+    bugs = [b for b in bugs if b['id'] != bug_id]
+    _save_bugs(bugs)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/bugs/submit', methods=['POST'])
+def submit_bugs_to_github():
+    """Submit all pending bugs to GitHub as issues using gh CLI."""
+    gh_bin = shutil.which('gh')
+    if not gh_bin:
+        return jsonify({'error': 'GitHub CLI (gh) not installed. Install it: brew install gh'}), 400
+
+    try:
+        auth_check = subprocess.run(
+            [gh_bin, 'auth', 'status'],
+            capture_output=True, text=True, timeout=10
+        )
+        if auth_check.returncode != 0:
+            return jsonify({'error': 'Not logged in to GitHub. Run: gh auth login'}), 400
+    except Exception as e:
+        return jsonify({'error': f'gh auth check failed: {e}'}), 500
+
+    bugs = _load_bugs()
+    pending = [b for b in bugs if b.get('status') == 'pending']
+
+    if not pending:
+        return jsonify({'ok': True, 'submitted': 0, 'message': 'No pending bugs to submit'})
+
+    submitted = 0
+    errors = []
+
+    for bug in pending:
+        body = f"**Type:** {bug.get('type', 'unknown')}\n"
+        body += f"**Version:** {bug.get('context', {}).get('version', 'unknown')}\n"
+        body += f"**Platform:** {bug.get('context', {}).get('platform', 'unknown')}\n"
+        body += f"**Reported:** {bug.get('created_at', 'unknown')}\n\n"
+
+        if bug.get('description'):
+            body += f"## Description\n{bug['description']}\n\n"
+
+        if bug.get('stack'):
+            body += f"## Stack Trace\n```\n{bug['stack']}\n```\n\n"
+
+        ctx = bug.get('context', {})
+        extra = {k: v for k, v in ctx.items() if k not in ('version', 'platform', 'python', 'timestamp')}
+        if extra:
+            body += f"## Context\n```json\n{json.dumps(extra, indent=2)}\n```\n\n"
+
+        body += "---\n*Auto-reported from Claude Editor bug tracker*"
+
+        title = bug.get('title', 'Bug Report')[:256]
+        label = 'bug' if bug.get('type') != 'feature-request' else 'enhancement'
+
+        try:
+            result = subprocess.run(
+                [gh_bin, 'issue', 'create',
+                 '--repo', GITHUB_REPO,
+                 '--title', f'[Auto] {title}',
+                 '--body', body,
+                 '--label', label],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                bug['status'] = 'submitted'
+                bug['github_url'] = result.stdout.strip()
+                submitted += 1
+            else:
+                errors.append(f"{bug['id']}: {result.stderr.strip()}")
+        except Exception as e:
+            errors.append(f"{bug['id']}: {str(e)}")
+
+    _save_bugs(bugs)
+
+    return jsonify({
+        'ok': True,
+        'submitted': submitted,
+        'total': len(pending),
+        'errors': errors if errors else None,
+    })
 
 
 # ─── File Upload ─────────────────────────────────────────────────────────────

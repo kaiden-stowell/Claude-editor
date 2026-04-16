@@ -34,6 +34,10 @@
                     <span class="version-label" id="version-label">v...</span>
                     <span class="update-badge" id="update-badge" style="display:none">Update</span>
                 </div>
+                <button class="tool-btn bug-btn" onclick="openBugReporter()" title="Report Bug" id="bug-toolbar-btn">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.3"/><line x1="7" y1="4" x2="7" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="10.5" r="0.8" fill="currentColor"/></svg>
+                    <span class="bug-count" id="bug-count" style="display:none">0</span>
+                </button>
                 <div class="system-status">
                     <span id="connection-dot" class="status-dot checking"></span>
                     <span id="connection-text" class="status-text">Checking...</span>
@@ -428,6 +432,67 @@ PUT  /api/brands/{name}</pre>
                     <div class="update-actions" id="update-actions">
                         <button class="fcp-btn" onclick="checkForUpdates(true)">Check Again</button>
                         <button class="fcp-btn primary" id="btn-apply-update" onclick="applyUpdate()" style="display:none">Update Now</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bug Reporter Modal -->
+        <div class="modal-overlay" id="bug-modal" style="display:none">
+            <div class="modal-backdrop" onclick="closeBugModal()"></div>
+            <div class="modal-sheet bug-sheet">
+                <div class="modal-top">
+                    <h3>Bug Tracker</h3>
+                    <button class="modal-close" onclick="closeBugModal()">&times;</button>
+                </div>
+                <div class="modal-body bug-modal-body">
+                    <!-- Report form -->
+                    <div class="bug-form" id="bug-form">
+                        <div class="bug-form-header">Report an Issue</div>
+                        <div class="bug-field">
+                            <label>Type</label>
+                            <select id="bug-type" class="fcp-select">
+                                <option value="bug">Bug</option>
+                                <option value="ui-issue">UI Issue</option>
+                                <option value="crash">Crash</option>
+                                <option value="feature-request">Feature Request</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="bug-field">
+                            <label>Title</label>
+                            <input type="text" id="bug-title" class="fcp-input" placeholder="Brief summary of the issue">
+                        </div>
+                        <div class="bug-field">
+                            <label>Description</label>
+                            <textarea id="bug-description" class="fcp-textarea" placeholder="What happened? What did you expect? Steps to reproduce..."></textarea>
+                        </div>
+                        <div class="bug-form-actions">
+                            <button class="fcp-btn primary" onclick="submitBugReport()">Save Report</button>
+                            <button class="fcp-btn" onclick="submitAllBugs()">Submit All to GitHub</button>
+                        </div>
+                    </div>
+
+                    <!-- Pending bugs list -->
+                    <div class="bug-list-section">
+                        <div class="bug-list-header">
+                            <span>Tracked Issues</span>
+                            <span class="bug-list-hint">Submitted to GitHub on update</span>
+                        </div>
+                        <div class="bug-list" id="bug-list">
+                            <div class="empty-state"><span>No tracked issues</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Auto-captured errors -->
+                    <div class="bug-list-section">
+                        <div class="bug-list-header">
+                            <span>Auto-Captured Errors</span>
+                            <span class="bug-auto-count" id="bug-auto-count">0</span>
+                        </div>
+                        <div class="bug-list" id="bug-auto-list">
+                            <div class="empty-state"><span>No errors captured</span></div>
+                        </div>
                     </div>
                 </div>
             </div>

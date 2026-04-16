@@ -35,6 +35,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# Data
+data/
+backups/
+
 # Logs
 logs/
 *.log

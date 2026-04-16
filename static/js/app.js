@@ -982,6 +982,196 @@ function closeUpdateModal() {
     document.getElementById('update-modal').style.display = 'none';
 }
 
+/* ─── Bug Tracker ──────────────────────────────────────────────────────── */
+
+let autoErrors = [];
+
+function setupErrorCapture() {
+    window.addEventListener('error', (e) => {
+        captureError('js-error', e.message, e.filename ? `${e.filename}:${e.lineno}:${e.colno}\n${e.error?.stack || ''}` : '');
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+        captureError('promise-rejection', String(e.reason), e.reason?.stack || '');
+    });
+
+    const origFetch = window.fetch;
+    window.fetch = async function (...args) {
+        try {
+            const res = await origFetch.apply(this, args);
+            if (!res.ok && String(args[0]).startsWith(API + '/api/')) {
+                captureError('api-error', `${res.status} ${res.statusText}: ${args[0]}`, '');
+            }
+            return res;
+        } catch (e) {
+            if (String(args[0]).startsWith(API + '/api/')) {
+                captureError('network-error', `Failed: ${args[0]}`, e.stack || '');
+            }
+            throw e;
+        }
+    };
+}
+
+function captureError(type, message, stack) {
+    if (autoErrors.length >= 50) autoErrors.shift();
+    autoErrors.push({
+        type: `auto-${type}`,
+        title: message.slice(0, 120),
+        stack: stack?.slice(0, 1000) || '',
+        timestamp: new Date().toISOString(),
+    });
+    updateBugCount();
+}
+
+function openBugReporter() {
+    document.getElementById('bug-modal').style.display = 'flex';
+    loadBugList();
+    renderAutoErrors();
+}
+
+function closeBugModal() {
+    document.getElementById('bug-modal').style.display = 'none';
+}
+
+async function submitBugReport() {
+    const title = document.getElementById('bug-title').value.trim();
+    const desc = document.getElementById('bug-description').value.trim();
+    const type = document.getElementById('bug-type').value;
+
+    if (!title) { showToast('Enter a title for the bug', 'warn'); return; }
+
+    try {
+        const res = await fetch(`${API}/api/bugs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title, description: desc, type,
+                context: { url: window.location.href, userAgent: navigator.userAgent },
+            }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('bug-title').value = '';
+            document.getElementById('bug-description').value = '';
+            showToast('Bug report saved', 'ok');
+            loadBugList();
+        }
+    } catch (e) { showToast(`Failed to save: ${e.message}`, 'error'); }
+}
+
+async function submitAutoError(idx) {
+    const err = autoErrors[idx];
+    if (!err) return;
+    try {
+        await fetch(`${API}/api/bugs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: err.title, type: err.type, stack: err.stack,
+                context: { capturedAt: err.timestamp, userAgent: navigator.userAgent },
+            }),
+        });
+        autoErrors.splice(idx, 1);
+        renderAutoErrors();
+        loadBugList();
+        showToast('Error saved to tracker', 'ok');
+    } catch (e) { showToast('Failed to save error', 'error'); }
+}
+
+async function loadBugList() {
+    try {
+        const res = await fetch(`${API}/api/bugs`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = document.getElementById('bug-list');
+
+        if (data.bugs && data.bugs.length) {
+            list.innerHTML = data.bugs.map(b => {
+                const typeClass = `type-${b.type || 'bug'}`;
+                const statusClass = b.status || 'pending';
+                const submitted = b.status === 'submitted';
+                return `<div class="bug-entry ${typeClass} ${submitted ? 'submitted' : ''}">
+                    <div class="bug-entry-info">
+                        <div class="bug-entry-title">${escapeHtml(b.title)}</div>
+                        <div class="bug-entry-meta">${b.type} | ${b.created_at || ''}</div>
+                    </div>
+                    <span class="bug-entry-status ${statusClass}">${b.status}</span>
+                    ${b.github_url ? `<a href="${b.github_url}" target="_blank" class="bug-entry-delete" title="View on GitHub">&nearr;</a>` : ''}
+                    <button class="bug-entry-delete" onclick="deleteBug('${b.id}')" title="Delete">&times;</button>
+                </div>`;
+            }).join('');
+        } else {
+            list.innerHTML = '<div class="empty-state"><span>No tracked issues</span></div>';
+        }
+
+        updateBugCount();
+    } catch (e) {}
+}
+
+function renderAutoErrors() {
+    const list = document.getElementById('bug-auto-list');
+    const count = document.getElementById('bug-auto-count');
+    count.textContent = autoErrors.length;
+
+    if (autoErrors.length) {
+        list.innerHTML = autoErrors.map((e, i) => `
+            <div class="bug-entry type-${e.type}">
+                <div class="bug-entry-info">
+                    <div class="bug-entry-title">${escapeHtml(e.title)}</div>
+                    <div class="bug-entry-meta">${e.type} | ${new Date(e.timestamp).toLocaleTimeString()}</div>
+                </div>
+                <button class="fcp-btn small" onclick="submitAutoError(${i})">Track</button>
+            </div>
+        `).join('');
+    } else {
+        list.innerHTML = '<div class="empty-state"><span>No errors captured</span></div>';
+    }
+}
+
+async function deleteBug(id) {
+    try {
+        await fetch(`${API}/api/bugs/${id}`, { method: 'DELETE' });
+        loadBugList();
+    } catch (e) {}
+}
+
+async function submitAllBugs() {
+    showToast('Submitting bugs to GitHub...', 'info');
+    try {
+        const res = await fetch(`${API}/api/bugs/submit`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.error) {
+            showToast(data.error, 'error');
+        } else {
+            showToast(`Submitted ${data.submitted} of ${data.total} bugs to GitHub`, 'ok');
+            loadBugList();
+        }
+    } catch (e) { showToast(`Submit failed: ${e.message}`, 'error'); }
+}
+
+function updateBugCount() {
+    const badge = document.getElementById('bug-count');
+    fetch(`${API}/api/bugs`).then(r => r.json()).then(data => {
+        const pending = (data.bugs || []).filter(b => b.status === 'pending').length;
+        const total = pending + autoErrors.length;
+        if (total > 0) {
+            badge.textContent = total;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }).catch(() => {});
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+
+setupErrorCapture();
+
 /* ─── Timecode Update ──────────────────────────────────────────────────── */
 
 setInterval(() => {
