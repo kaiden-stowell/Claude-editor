@@ -1,13 +1,14 @@
 """
-AI Director — uses Claude to create intelligent edit decisions.
+AI Director — uses Claude Code CLI to create intelligent edit decisions.
 
-Takes a style profile (from the example video) and a transcript (from the raw
-footage) and produces a structured edit plan that matches the example's style
-while highlighting the best content from the raw footage.
+Spawns the `claude` CLI binary (same as Agent Hub) instead of calling
+the Anthropic API directly. No API key needed — Claude Code handles auth.
 """
 
 import json
-import anthropic
+import subprocess
+import shutil
+import os
 
 
 SYSTEM_PROMPT = """You are a world-class video editor AI with access to premium editing tools. Your job is to create a professional edit decision list (EDL) that transforms raw footage into a polished, broadcast-quality video.
@@ -39,10 +40,59 @@ PREMIUM TOOLS AVAILABLE:
 You MUST respond with valid JSON only. No markdown, no explanation outside the JSON."""
 
 
+def _find_claude():
+    """Locate the claude CLI binary, matching Agent Hub's discovery pattern."""
+    env_bin = os.environ.get('CLAUDE_BIN')
+    if env_bin and os.path.isfile(env_bin):
+        return env_bin
+
+    candidates = [
+        os.path.join(os.environ.get('HOME', ''), '.local', 'bin', 'claude'),
+        '/opt/homebrew/bin/claude',
+        '/usr/local/bin/claude',
+        os.path.join(os.environ.get('HOME', ''), '.npm', 'bin', 'claude'),
+        os.path.join(os.environ.get('HOME', ''), 'node_modules', '.bin', 'claude'),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+
+    found = shutil.which('claude')
+    if found:
+        return found
+
+    return 'claude'
+
+
+def _parse_stream_json(raw):
+    """Parse Claude Code stream-json output, extracting text from assistant messages."""
+    text_parts = []
+    cost = None
+
+    for line in raw.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if obj.get('type') == 'assistant' and obj.get('message', {}).get('content'):
+                for block in obj['message']['content']:
+                    if block.get('type') == 'text' and block.get('text'):
+                        text_parts.append(block['text'])
+            if obj.get('type') == 'result':
+                if obj.get('result'):
+                    text_parts.append(obj['result'])
+                if obj.get('total_cost_usd'):
+                    cost = obj['total_cost_usd']
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+
+    return ''.join(text_parts), cost
+
+
 def _build_user_prompt(style_profile, transcript, user_instructions=None):
     """Build the user prompt with style profile and transcript."""
 
-    # Summarize the style profile
     pacing = style_profile.get('pacing', {})
     colors = style_profile.get('colors', {})
     audio = style_profile.get('audio', {})
@@ -69,7 +119,6 @@ def _build_user_prompt(style_profile, transcript, user_instructions=None):
 - Has audio: {audio.get('has_audio', True)}
 - Mean volume: {audio.get('mean_volume_db', -20):.1f} dB"""
 
-    # Format transcript segments
     transcript_text = "## RAW FOOTAGE TRANSCRIPT\n\n"
     transcript_text += f"**Total duration:** {transcript.get('duration', 0):.1f} seconds\n"
     transcript_text += f"**Full text:** {transcript.get('text', '')}\n\n"
@@ -78,7 +127,6 @@ def _build_user_prompt(style_profile, transcript, user_instructions=None):
     for seg in transcript.get('segments', []):
         transcript_text += f"[{seg['start']:.1f}s - {seg['end']:.1f}s] {seg['text']}\n"
 
-    # User instructions
     instructions = ""
     if user_instructions:
         instructions = f"\n## ADDITIONAL INSTRUCTIONS FROM USER\n{user_instructions}\n"
@@ -168,55 +216,61 @@ PREMIUM FEATURES RULES:
 - "premium.zoom_points": optional list of {{start, end, zoom_start, zoom_end, x, y}} for dynamic zoom on key moments"""
 
 
-def create_edit_plan(style_profile, transcript, api_key, model=None,
-                     user_instructions=None, progress_callback=None):
+def create_edit_plan(style_profile, transcript, model=None,
+                     user_instructions=None, progress_callback=None, **kwargs):
     """
-    Use Claude to generate an intelligent edit plan.
+    Use Claude Code CLI to generate an intelligent edit plan.
 
-    Args:
-        style_profile: dict from analyzer.analyze_video()
-        transcript: dict from transcriber.transcribe_video()
-        api_key: Anthropic API key
-        model: Claude model to use
-        user_instructions: optional additional instructions from user
-        progress_callback: optional callback for progress updates
-
-    Returns:
-        dict with the complete edit plan
+    Spawns the `claude` binary with --print --output-format stream-json,
+    matching Agent Hub's integration pattern. No API key needed.
     """
-    if not api_key:
-        raise ValueError(
-            "Anthropic API key is required. Set the ANTHROPIC_API_KEY environment variable."
-        )
+    claude_bin = _find_claude()
 
     if progress_callback:
         progress_callback('ai_director', 10, 'Preparing edit brief for Claude...')
 
-    client = anthropic.Anthropic(api_key=api_key)
-    model = model or 'claude-sonnet-4-20250514'
-
     user_prompt = _build_user_prompt(style_profile, transcript, user_instructions)
+
+    full_prompt = SYSTEM_PROMPT + '\n\n---\n\n' + user_prompt
+
+    model = model or 'claude-sonnet-4-6'
+
+    args = [
+        claude_bin,
+        '--print',
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--model', model,
+        '--dangerously-skip-permissions',
+        full_prompt,
+    ]
 
     if progress_callback:
         progress_callback('ai_director', 30, 'Claude is analyzing your footage...')
 
-    message = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}]
+    proc = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'FORCE_COLOR': '0', 'NO_COLOR': '1'},
+        timeout=300,
     )
+
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()
+        raise RuntimeError(f"Claude Code exited with code {proc.returncode}: {stderr}")
 
     if progress_callback:
         progress_callback('ai_director', 80, 'Parsing edit plan...')
 
-    # Extract JSON from response
-    response_text = message.content[0].text.strip()
+    response_text, cost = _parse_stream_json(proc.stdout)
 
-    # Handle potential markdown wrapping
+    if not response_text:
+        raise RuntimeError("Claude Code returned no output. Is the claude CLI installed and authenticated?")
+
+    response_text = response_text.strip()
     if response_text.startswith('```'):
         lines = response_text.split('\n')
-        # Remove first and last lines (```json and ```)
         response_text = '\n'.join(lines[1:-1])
 
     try:
@@ -224,7 +278,6 @@ def create_edit_plan(style_profile, transcript, api_key, model=None,
     except json.JSONDecodeError as e:
         raise ValueError(f"Claude returned invalid JSON: {e}\nResponse: {response_text[:500]}")
 
-    # Validate the edit plan
     _validate_edit_plan(edit_plan, transcript.get('duration', 0))
 
     if progress_callback:
@@ -241,22 +294,18 @@ def _validate_edit_plan(plan, source_duration):
     if not plan['segments']:
         raise ValueError("Edit plan has no segments")
 
-    # Clamp segment times to source duration
     for seg in plan['segments']:
         seg['start'] = max(0, min(float(seg['start']), source_duration))
         seg['end'] = max(seg['start'] + 0.1, min(float(seg['end']), source_duration))
 
-    # Ensure captions exist
     if 'captions' not in plan:
         plan['captions'] = []
 
-    # Ensure color adjustments exist with defaults
     defaults = {'brightness_factor': 1.0, 'contrast_factor': 1.0, 'saturation_factor': 1.0}
     plan.setdefault('color_adjustments', defaults)
     for k, v in defaults.items():
         plan['color_adjustments'].setdefault(k, v)
 
-    # Ensure other fields
     plan.setdefault('transition_type', 'cut')
     plan.setdefault('title', 'Untitled Edit')
     plan.setdefault('concept', '')
@@ -267,7 +316,6 @@ def _validate_edit_plan(plan, source_duration):
         'background': 'semi-transparent'
     })
 
-    # Ensure premium fields exist with defaults
     premium_defaults = {
         'lut': 'none',
         'caption_mode': 'standard',

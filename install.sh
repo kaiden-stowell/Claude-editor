@@ -29,7 +29,7 @@ fi
 
 # ─── Check Dependencies ─────────────────────────────────────────────────
 
-echo "[1/6] Checking Python..."
+echo "[1/7] Checking Python..."
 if command -v python3 &>/dev/null; then
     PYTHON=$(which python3)
     PY_VERSION=$($PYTHON --version 2>&1 | awk '{print $2}')
@@ -40,7 +40,23 @@ else
     exit 1
 fi
 
-echo "[2/6] Checking FFmpeg..."
+echo "[2/7] Checking Claude Code CLI..."
+if command -v claude &>/dev/null; then
+    CLAUDE_VER=$(claude --version 2>&1 | head -1)
+    echo "  Found Claude Code: $CLAUDE_VER"
+else
+    echo "  Claude Code CLI not found. Installing..."
+    if command -v npm &>/dev/null; then
+        npm install -g @anthropic-ai/claude-code
+        echo "  Claude Code installed."
+    else
+        echo "  Error: npm not found. Install Node.js 18+ first, then run:"
+        echo "  npm install -g @anthropic-ai/claude-code"
+        exit 1
+    fi
+fi
+
+echo "[3/7] Checking FFmpeg..."
 if command -v ffmpeg &>/dev/null; then
     FF_VERSION=$(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')
     echo "  Found FFmpeg $FF_VERSION"
@@ -69,7 +85,7 @@ fi
 
 # ─── Clone / Update Repository ──────────────────────────────────────────
 
-echo "[3/6] Downloading Claude Editor..."
+echo "[4/7] Downloading Claude Editor..."
 if [ -d "$INSTALL_DIR" ]; then
     echo "  Found existing install at $INSTALL_DIR"
     # Preserve user data
@@ -102,7 +118,7 @@ fi
 
 # ─── Create Virtual Environment ──────────────────────────────────────────
 
-echo "[4/6] Setting up Python environment..."
+echo "[5/7] Setting up Python environment..."
 if [ ! -d "venv" ]; then
     $PYTHON -m venv venv
 fi
@@ -110,28 +126,26 @@ source venv/bin/activate
 
 # ─── Install Dependencies ────────────────────────────────────────────────
 
-echo "[5/6] Installing dependencies..."
+echo "[6/7] Installing dependencies..."
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
 echo "  Dependencies installed."
 
 # ─── Configuration ───────────────────────────────────────────────────────
 
-echo "[6/6] Configuration..."
+echo "[7/7] Configuration..."
 
 # Create .env if missing
 if [ ! -f .env ]; then
     cat > .env <<'ENVEOF'
 # Claude Editor Configuration
-# ANTHROPIC_API_KEY=sk-ant-...
+# Uses Claude Code CLI — no API key needed
+# CLAUDE_BIN=/usr/local/bin/claude
 # WHISPER_MODEL=base
-# CLAUDE_MODEL=claude-sonnet-4-20250514
+# CLAUDE_MODEL=claude-sonnet-4-6
 # EDITOR_HOST=127.0.0.1
 # EDITOR_PORT=12795
 ENVEOF
-    echo ""
-    echo "  Edit $INSTALL_DIR/.env with your API key:"
-    echo "     nano $INSTALL_DIR/.env"
 fi
 
 # Create start script that sources .env and activates venv

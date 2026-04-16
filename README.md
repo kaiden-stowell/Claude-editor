@@ -39,7 +39,6 @@ cd Claude-editor
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=your-key-here
 python3 app.py
 ```
 
@@ -49,7 +48,7 @@ Then open: **http://127.0.0.1:12795**
 
 - Python 3.9+
 - FFmpeg
-- Anthropic API key (`ANTHROPIC_API_KEY`)
+- Claude Code CLI (`npm install -g @anthropic-ai/claude-code`)
 
 ## Agent API
 
@@ -128,9 +127,9 @@ Claude-editor/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | (required) | Your Anthropic API key |
+| `CLAUDE_BIN` | (auto-detected) | Path to claude CLI binary |
 | `WHISPER_MODEL` | `base` | Whisper model size (tiny/base/small/medium/large) |
-| `CLAUDE_MODEL` | `claude-sonnet-4-20250514` | Claude model for AI Director |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude model for AI Director |
 | `EDITOR_HOST` | `127.0.0.1` | Server host |
 | `EDITOR_PORT` | `12795` | Server port |
 

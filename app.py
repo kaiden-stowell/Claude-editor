@@ -125,7 +125,6 @@ def _process_job(job_id):
         edit_plan = create_edit_plan(
             style_profile,
             transcript,
-            api_key=Config.ANTHROPIC_API_KEY,
             model=Config.CLAUDE_MODEL,
             user_instructions=brand_instructions,
             progress_callback=cb
@@ -193,7 +192,7 @@ def health():
     except ImportError:
         checks['whisper'] = False
 
-    checks['anthropic_key'] = bool(Config.ANTHROPIC_API_KEY)
+    checks['claude_cli'] = Config.has_claude()
 
     try:
         import cv2
@@ -330,8 +329,8 @@ def start_processing():
         return jsonify({'error': 'Example video not found'}), 400
     if not raw_path or not os.path.exists(raw_path):
         return jsonify({'error': 'Raw footage not found'}), 400
-    if not Config.ANTHROPIC_API_KEY:
-        return jsonify({'error': 'ANTHROPIC_API_KEY not set. Export it before starting.'}), 400
+    if not Config.has_claude():
+        return jsonify({'error': 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'}), 400
 
     brand_config = get_brand(brand_name)
 
@@ -545,8 +544,8 @@ def agent_edit():
         return jsonify({'error': 'raw_footage path required'}), 400
     if not os.path.exists(raw_path):
         return jsonify({'error': f'Raw footage not found: {raw_path}'}), 400
-    if not Config.ANTHROPIC_API_KEY:
-        return jsonify({'error': 'ANTHROPIC_API_KEY not set'}), 400
+    if not Config.has_claude():
+        return jsonify({'error': 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'}), 400
 
     brand_config = get_brand(brand_name)
     custom_output = data.get('output_path')
@@ -968,8 +967,8 @@ if __name__ == '__main__':
     except FileNotFoundError:
         issues.append("  ! FFmpeg not found: install via your package manager")
 
-    if not Config.ANTHROPIC_API_KEY:
-        issues.append("  ! ANTHROPIC_API_KEY not set: export ANTHROPIC_API_KEY=sk-...")
+    if not Config.has_claude():
+        issues.append("  ! Claude Code CLI not found: npm install -g @anthropic-ai/claude-code")
 
     if issues:
         print("\n  Setup needed:")
