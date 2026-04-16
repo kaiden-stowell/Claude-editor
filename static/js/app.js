@@ -208,6 +208,25 @@ async function startProcessing() {
 
     const instructions = document.getElementById('instructions').value;
 
+    // Gather premium settings
+    const premiumLut = document.getElementById('premium-lut').value;
+    const premiumCaptions = document.getElementById('premium-captions').value;
+    const premiumGrain = document.getElementById('premium-grain').value;
+    const premiumNormalize = document.getElementById('premium-normalize').checked;
+    const premiumDenoise = document.getElementById('premium-denoise').checked;
+    const premiumVoice = document.getElementById('premium-voice').checked;
+    const premiumVignette = document.getElementById('premium-vignette').checked;
+
+    // Build premium instructions for AI
+    let premiumInstructions = instructions;
+    if (premiumLut !== 'auto') premiumInstructions += `\nUse LUT: ${premiumLut}`;
+    if (premiumCaptions !== 'auto') premiumInstructions += `\nCaption style: ${premiumCaptions}`;
+    if (premiumGrain !== 'auto') premiumInstructions += `\nFilm grain: ${premiumGrain}`;
+    if (premiumNormalize) premiumInstructions += '\nNormalize audio.';
+    if (premiumDenoise) premiumInstructions += '\nApply noise reduction.';
+    if (premiumVoice) premiumInstructions += '\nEnhance voice clarity.';
+    if (premiumVignette) premiumInstructions += '\nAdd vignette effect.';
+
     try {
         const res = await fetch(`${API}/api/process`, {
             method: 'POST',
@@ -215,7 +234,7 @@ async function startProcessing() {
             body: JSON.stringify({
                 example_path: state.examplePath,
                 raw_path: state.rawPath,
-                instructions: instructions,
+                instructions: premiumInstructions,
                 output_format: state.outputFormat,
                 brand: state.brand,
             }),
@@ -323,6 +342,13 @@ function onComplete(data) {
         `Resolution: ${output.resolution || 'N/A'} &bull; ` +
         `Segments: ${output.segments_used || 0} &bull; ` +
         `Captions: ${output.captions_added || 0}`;
+
+    // Show premium features applied
+    const premiumDiv = document.getElementById('result-premium');
+    const features = output.premium_features || [];
+    premiumDiv.innerHTML = features.map(f =>
+        `<span class="premium-tag">${f}</span>`
+    ).join('');
 
     // Show video preview
     const video = document.getElementById('preview-video');
@@ -461,6 +487,58 @@ async function saveBrand() {
         alert(`Brand "${name}" saved!`);
     } catch (e) {
         alert(`Failed to save brand: ${e.message}`);
+    }
+}
+
+/* ─── Export for Platform ───────────────────────────────────────────────── */
+
+async function exportForPlatform() {
+    if (!state.jobId) return;
+
+    const platform = document.getElementById('premium-platform').value;
+    if (platform === 'auto') {
+        alert('Select a specific platform from the Premium Features panel first.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API}/api/premium/export/${state.jobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            alert(`Export failed: ${data.error}`);
+        } else {
+            alert(`Exported for ${data.preset_name}!\nSize: ${data.size_mb} MB\nReady to download.`);
+        }
+    } catch (e) {
+        alert(`Export error: ${e.message}`);
+    }
+}
+
+/* ─── Thumbnail Generation ─────────────────────────────────────────────── */
+
+async function generateThumbnail() {
+    if (!state.jobId) return;
+
+    try {
+        const res = await fetch(`${API}/api/premium/thumbnail/${state.jobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            alert(`Thumbnail failed: ${data.error}`);
+        } else {
+            window.open(`${API}/api/premium/thumbnail/${state.jobId}/download`, '_blank');
+        }
+    } catch (e) {
+        alert(`Thumbnail error: ${e.message}`);
     }
 }
 

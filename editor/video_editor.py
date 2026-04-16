@@ -337,9 +337,11 @@ def _remap_caption_times(captions, segments):
 
 
 def execute_edit(raw_footage_path, edit_plan, output_path,
-                 output_format='match', progress_callback=None):
+                 output_format='match', progress_callback=None,
+                 transcript_words=None):
     """
     Execute an edit plan on raw footage to produce the final video.
+    Includes premium effects pipeline: LUTs, audio processing, advanced captions.
 
     Args:
         raw_footage_path: path to the raw video file
@@ -347,10 +349,16 @@ def execute_edit(raw_footage_path, edit_plan, output_path,
         output_path: where to save the final video
         output_format: 'reel' (9:16), 'landscape' (16:9), 'square' (1:1), or 'match'
         progress_callback: optional callback(stage, percent, message)
+        transcript_words: word-level timestamps for word-by-word captions
 
     Returns:
         dict with output info (path, duration, size)
     """
+    # Import premium modules
+    from editor.effects import apply_lut, apply_film_grain, apply_vignette, apply_zoom_effect, apply_speed_ramp
+    from editor.audio import normalize_audio, reduce_noise, enhance_voice
+    from editor.captions import apply_premium_captions
+
     if not os.path.exists(raw_footage_path):
         raise FileNotFoundError(f"Raw footage not found: {raw_footage_path}")
 
@@ -369,6 +377,7 @@ def execute_edit(raw_footage_path, edit_plan, output_path,
     color_adj = edit_plan.get('color_adjustments', {})
     transition_type = edit_plan.get('transition_type', 'cut')
     caption_style = edit_plan.get('caption_style', {})
+    premium = edit_plan.get('premium', {})
 
     # Determine final dimensions based on output format
     format_dims = {
@@ -382,53 +391,155 @@ def execute_edit(raw_footage_path, edit_plan, output_path,
         final_width, final_height = src_width, src_height
 
     temp_dir = tempfile.mkdtemp(prefix='claude_edit_')
+    step_counter = [0]
+    total_steps = 9  # Max possible steps
+
+    def step(msg):
+        step_counter[0] += 1
+        pct = min(95, int(step_counter[0] / total_steps * 100))
+        if progress_callback:
+            progress_callback('editor', pct, msg)
 
     try:
-        # Step 1: Extract segments
-        if progress_callback:
-            progress_callback('editor', 10, f'Cutting {len(segments)} segments...')
+        # ── Step 1: Extract segments ─────────────────────────────────────
+        step(f'Cutting {len(segments)} segments...')
 
         segment_paths = []
         for i, seg in enumerate(segments):
             seg_path = os.path.join(temp_dir, f'segment_{i:03d}.mp4')
             _extract_segment(raw_footage_path, seg['start'], seg['end'], seg_path)
+
+            # Apply per-segment speed if specified
+            speed = float(seg.get('speed', 1.0))
+            if abs(speed - 1.0) > 0.05:
+                speed_path = os.path.join(temp_dir, f'speed_{i:03d}.mp4')
+                try:
+                    apply_speed_ramp(seg_path, speed_path,
+                                     [{'start': 0, 'end': 9999, 'speed': speed}])
+                    seg_path = speed_path
+                except Exception:
+                    pass  # Keep original if speed ramp fails
+
             segment_paths.append(seg_path)
 
-            if progress_callback:
-                pct = 10 + int(20 * (i + 1) / len(segments))
-                progress_callback('editor', pct, f'Cut segment {i+1}/{len(segments)}')
-
-        # Step 2: Concatenate segments
-        if progress_callback:
-            progress_callback('editor', 35, 'Joining segments...')
-
+        # ── Step 2: Concatenate segments ─────────────────────────────────
+        step('Joining segments...')
         concat_path = os.path.join(temp_dir, 'concat.mp4')
         _concatenate_segments(segment_paths, concat_path, transition_type)
 
-        # Step 3: Crop/convert to target format (reel, square, etc.)
-        if progress_callback:
-            progress_callback('editor', 50, f'Converting to {output_format} format...')
-
+        # ── Step 3: Crop/convert to target format ────────────────────────
+        step(f'Converting to {output_format} format...')
         format_path = os.path.join(temp_dir, 'formatted.mp4')
         if output_format in format_dims:
             _crop_to_format(concat_path, format_path, output_format, src_width, src_height)
         else:
             shutil.copy2(concat_path, format_path)
 
-        # Step 4: Apply color adjustments
-        if progress_callback:
-            progress_callback('editor', 65, 'Applying color adjustments...')
-
+        # ── Step 4: Apply color adjustments ──────────────────────────────
+        step('Applying color adjustments...')
         color_path = os.path.join(temp_dir, 'colored.mp4')
         _apply_color_adjustments(format_path, color_path, color_adj)
 
-        # Step 5: Remap and apply on-brand captions
-        if progress_callback:
-            progress_callback('editor', 80, 'Rendering on-brand captions...')
+        # ── Step 5: Apply LUT color grade ────────────────────────────────
+        current = color_path
+        lut_name = premium.get('lut', 'none')
+        if lut_name and lut_name != 'none':
+            step(f'Applying {lut_name} color grade...')
+            lut_path = os.path.join(temp_dir, 'lut.mp4')
+            try:
+                apply_lut(current, lut_path, lut_name)
+                current = lut_path
+            except Exception:
+                pass  # Keep un-graded if LUT fails
+        else:
+            step('Skipping LUT...')
 
+        # ── Step 6: Apply film grain + vignette ──────────────────────────
+        grain = premium.get('film_grain', 'none')
+        if grain and grain != 'none':
+            step(f'Adding {grain} film grain...')
+            grain_path = os.path.join(temp_dir, 'grain.mp4')
+            try:
+                apply_film_grain(current, grain_path, grain)
+                current = grain_path
+            except Exception:
+                pass
+
+        if premium.get('vignette', False):
+            step('Adding vignette...')
+            vig_path = os.path.join(temp_dir, 'vignette.mp4')
+            try:
+                apply_vignette(current, vig_path)
+                current = vig_path
+            except Exception:
+                pass
+
+        # ── Step 7: Audio processing ─────────────────────────────────────
+        audio_processed = False
+        if premium.get('audio_normalize', False):
+            step('Normalizing audio...')
+            norm_path = os.path.join(temp_dir, 'normalized.mp4')
+            try:
+                normalize_audio(current, norm_path)
+                current = norm_path
+                audio_processed = True
+            except Exception:
+                pass
+
+        denoise = premium.get('audio_denoise', 'none')
+        if denoise and denoise != 'none':
+            step(f'Reducing noise ({denoise})...')
+            dn_path = os.path.join(temp_dir, 'denoised.mp4')
+            try:
+                reduce_noise(current, dn_path, denoise)
+                current = dn_path
+                audio_processed = True
+            except Exception:
+                pass
+
+        if premium.get('voice_enhance', False):
+            step('Enhancing voice...')
+            ve_path = os.path.join(temp_dir, 'voice_enhanced.mp4')
+            try:
+                enhance_voice(current, ve_path)
+                current = ve_path
+                audio_processed = True
+            except Exception:
+                pass
+
+        # ── Step 8: Apply captions ───────────────────────────────────────
+        step('Rendering on-brand captions...')
         remapped_captions = _remap_caption_times(captions, segments)
-        _apply_captions(color_path, output_path, remapped_captions,
-                       caption_style, final_width, final_height)
+
+        caption_mode = premium.get('caption_mode', 'standard')
+        caption_path = os.path.join(temp_dir, 'captioned.mp4')
+
+        if caption_mode in ('word-highlight', 'outline', 'glow') and remapped_captions:
+            # Remap word timestamps too
+            remapped_words = _remap_caption_times(
+                transcript_words or [], segments
+            ) if transcript_words else []
+
+            try:
+                apply_premium_captions(
+                    current, caption_path, remapped_captions, remapped_words,
+                    caption_style, final_width, final_height, caption_mode
+                )
+                current = caption_path
+            except Exception:
+                # Fallback to standard captions
+                _apply_captions(current, caption_path, remapped_captions,
+                               caption_style, final_width, final_height)
+                current = caption_path
+        elif remapped_captions:
+            _apply_captions(current, caption_path, remapped_captions,
+                           caption_style, final_width, final_height)
+            current = caption_path
+
+        # ── Step 9: Final output ─────────────────────────────────────────
+        step('Finalizing...')
+        if current != output_path:
+            shutil.copy2(current, output_path)
 
         # Get final output info
         output_info = _get_video_info(output_path)
@@ -437,6 +548,19 @@ def execute_edit(raw_footage_path, edit_plan, output_path,
 
         if progress_callback:
             progress_callback('editor', 100, 'Edit complete!')
+
+        # Build premium features summary
+        premium_applied = []
+        if lut_name and lut_name != 'none':
+            premium_applied.append(f'LUT: {lut_name}')
+        if grain and grain != 'none':
+            premium_applied.append(f'Film grain: {grain}')
+        if premium.get('vignette'):
+            premium_applied.append('Vignette')
+        if audio_processed:
+            premium_applied.append('Audio enhanced')
+        if caption_mode != 'standard':
+            premium_applied.append(f'Captions: {caption_mode}')
 
         return {
             'path': output_path,
@@ -448,6 +572,7 @@ def execute_edit(raw_footage_path, edit_plan, output_path,
             'segments_used': len(segments),
             'captions_added': len(remapped_captions),
             'title': edit_plan.get('title', 'Untitled'),
+            'premium_features': premium_applied,
         }
 
     finally:

@@ -119,6 +119,79 @@
                     </div>
                 </div>
 
+                <!-- Step 4: Premium Features -->
+                <div class="step" id="step-4">
+                    <div class="step-header" onclick="toggleStep(4)">
+                        <span class="step-num">4</span>
+                        <span class="step-title">Premium Features</span>
+                        <span class="step-status" id="step4-status"></span>
+                    </div>
+                    <div class="step-body" id="step4-body">
+                        <div class="form-group">
+                            <label>Color Grade (LUT)</label>
+                            <select id="premium-lut">
+                                <option value="auto">Auto (AI chooses)</option>
+                                <option value="none">None</option>
+                                <option value="cinematic-warm">Cinematic Warm</option>
+                                <option value="cinematic-cool">Cinematic Cool (Teal & Orange)</option>
+                                <option value="moody-dark">Moody Dark</option>
+                                <option value="vintage-film">Vintage Film</option>
+                                <option value="vibrant">Vibrant</option>
+                                <option value="golden-hour">Golden Hour</option>
+                                <option value="cyberpunk">Cyberpunk</option>
+                                <option value="pastel">Pastel</option>
+                                <option value="high-contrast">High Contrast</option>
+                                <option value="black-white">Black & White</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Caption Style</label>
+                            <select id="premium-captions">
+                                <option value="auto">Auto (AI chooses)</option>
+                                <option value="word-highlight">Word-by-Word Highlight</option>
+                                <option value="outline">Bold Outline</option>
+                                <option value="glow">Glow Effect</option>
+                                <option value="standard">Standard Box</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Film Grain</label>
+                            <select id="premium-grain">
+                                <option value="auto">Auto (AI chooses)</option>
+                                <option value="none">None</option>
+                                <option value="light">Light</option>
+                                <option value="medium">Medium</option>
+                                <option value="heavy">Heavy</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Audio Processing</label>
+                            <div class="checkbox-group">
+                                <label class="checkbox"><input type="checkbox" id="premium-normalize" checked> Normalize volume</label>
+                                <label class="checkbox"><input type="checkbox" id="premium-denoise" checked> Noise reduction</label>
+                                <label class="checkbox"><input type="checkbox" id="premium-voice"> Voice enhance</label>
+                                <label class="checkbox"><input type="checkbox" id="premium-vignette"> Vignette effect</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Export Platform</label>
+                            <select id="premium-platform">
+                                <option value="auto">Auto (best quality)</option>
+                                <option value="tiktok">TikTok / Reels</option>
+                                <option value="youtube-shorts">YouTube Shorts</option>
+                                <option value="youtube-hd">YouTube HD 1080p</option>
+                                <option value="youtube-4k">YouTube 4K</option>
+                                <option value="instagram-reel">Instagram Reel</option>
+                                <option value="instagram-post">Instagram Post (Square)</option>
+                                <option value="twitter">Twitter/X</option>
+                                <option value="linkedin">LinkedIn</option>
+                                <option value="web-optimized">Web (Small File)</option>
+                                <option value="pro-master">Pro Master (Best Quality)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Process Button -->
                 <div class="step-action">
                     <button class="btn btn-primary btn-lg" id="btn-process" onclick="startProcessing()" disabled>
@@ -173,9 +246,12 @@
                             <span class="result-title" id="result-title"></span>
                         </div>
                         <div class="result-meta" id="result-meta"></div>
+                        <div class="result-premium" id="result-premium"></div>
                         <div class="result-actions">
                             <button class="btn btn-primary" id="btn-download" onclick="downloadVideo()">Download Video</button>
-                            <button class="btn btn-ghost" onclick="showEditPlan()">View Edit Plan</button>
+                            <button class="btn btn-ghost" onclick="exportForPlatform()">Export for Platform</button>
+                            <button class="btn btn-ghost" onclick="generateThumbnail()">Thumbnail</button>
+                            <button class="btn btn-ghost" onclick="showEditPlan()">Edit Plan</button>
                             <button class="btn btn-ghost" onclick="resetWorkflow()">New Edit</button>
                         </div>
                     </div>

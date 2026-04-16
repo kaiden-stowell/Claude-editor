@@ -27,6 +27,13 @@ from editor.brand import (
     get_brand, save_brand, list_brands, delete_brand,
     brand_to_caption_style, PRESETS, DEFAULT_BRAND
 )
+from editor.effects import list_available_effects, list_available_luts, LUTS
+from editor.audio import detect_silence
+from editor.captions import list_caption_styles
+from editor.export import (
+    export_for_platform, export_multi_platform, export_with_quality,
+    generate_thumbnail, list_export_presets, list_quality_tiers
+)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -127,12 +134,18 @@ def _process_job(job_id):
         output_filename = f"edited_{job_id}.mp4"
         output_path = os.path.join(Config.OUTPUT_FOLDER, output_filename)
 
+        # Gather word-level timestamps for premium captions
+        all_words = []
+        for seg in transcript.get('segments', []):
+            all_words.extend(seg.get('words', []))
+
         result = execute_edit(
             job['raw_path'],
             edit_plan,
             output_path,
             output_format=output_format,
-            progress_callback=cb
+            progress_callback=cb,
+            transcript_words=all_words
         )
 
         job['status'] = 'complete'
@@ -608,6 +621,122 @@ def list_jobs():
         })
     job_list.sort(key=lambda j: j['created_at'], reverse=True)
     return jsonify(job_list)
+
+
+# ─── Premium Features API ────────────────────────────────────────────────────
+
+@app.route('/api/premium/effects')
+def api_effects():
+    """List all available premium effects."""
+    return jsonify(list_available_effects())
+
+
+@app.route('/api/premium/luts')
+def api_luts():
+    """List all available LUT color grades."""
+    return jsonify(list_available_luts())
+
+
+@app.route('/api/premium/caption-styles')
+def api_caption_styles():
+    """List all available caption styles."""
+    return jsonify(list_caption_styles())
+
+
+@app.route('/api/premium/export-presets')
+def api_export_presets():
+    """List all platform export presets."""
+    return jsonify(list_export_presets())
+
+
+@app.route('/api/premium/quality-tiers')
+def api_quality_tiers():
+    """List all quality tiers."""
+    return jsonify(list_quality_tiers())
+
+
+@app.route('/api/premium/export/<job_id>', methods=['POST'])
+def api_export(job_id):
+    """
+    Export a completed job's video to a specific platform format.
+
+    JSON body: {"platform": "tiktok"} or {"platforms": ["tiktok", "youtube-shorts"]}
+    """
+    if job_id not in jobs:
+        return jsonify({'error': 'Job not found'}), 404
+
+    job = jobs[job_id]
+    if job['status'] != 'complete':
+        return jsonify({'error': 'Job not complete'}), 400
+
+    data = request.get_json() or {}
+    source = job['output']['path']
+
+    platform = data.get('platform')
+    platforms = data.get('platforms')
+
+    if platforms:
+        output_dir = os.path.join(Config.OUTPUT_FOLDER, f'export_{job_id}')
+        results = export_multi_platform(source, output_dir, platforms)
+        return jsonify({'exports': results})
+    elif platform:
+        output_path = os.path.join(
+            Config.OUTPUT_FOLDER, f'export_{job_id}_{platform}.mp4'
+        )
+        result = export_for_platform(source, output_path, platform)
+        return jsonify(result)
+    else:
+        return jsonify({'error': 'Specify platform or platforms'}), 400
+
+
+@app.route('/api/premium/thumbnail/<job_id>', methods=['POST'])
+def api_thumbnail(job_id):
+    """Generate a thumbnail from a completed job's video."""
+    if job_id not in jobs:
+        return jsonify({'error': 'Job not found'}), 404
+
+    job = jobs[job_id]
+    if job['status'] != 'complete':
+        return jsonify({'error': 'Job not complete'}), 400
+
+    data = request.get_json() or {}
+    source = job['output']['path']
+    time_offset = data.get('time_offset')
+
+    thumb_path = os.path.join(Config.OUTPUT_FOLDER, f'thumb_{job_id}.jpg')
+    result = generate_thumbnail(source, thumb_path, time_offset)
+    return jsonify(result)
+
+
+@app.route('/api/premium/thumbnail/<job_id>/download')
+def api_thumbnail_download(job_id):
+    """Download the thumbnail image."""
+    thumb_path = os.path.join(Config.OUTPUT_FOLDER, f'thumb_{job_id}.jpg')
+    if not os.path.exists(thumb_path):
+        return jsonify({'error': 'Thumbnail not found. Generate it first.'}), 404
+    return send_file(thumb_path, mimetype='image/jpeg')
+
+
+@app.route('/api/premium/silence-detect', methods=['POST'])
+def api_silence_detect():
+    """Detect silent segments in a video (useful for jump-cut editing)."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    min_duration = data.get('min_duration', 0.5)
+    threshold = data.get('threshold', -35)
+
+    silences = detect_silence(path, min_duration, threshold)
+    return jsonify({
+        'silences': silences,
+        'total_silence': round(sum(s['duration'] for s in silences), 2),
+        'silent_segments': len(silences),
+    })
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────

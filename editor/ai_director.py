@@ -10,13 +10,13 @@ import json
 import anthropic
 
 
-SYSTEM_PROMPT = """You are an expert video editor AI. Your job is to create an edit decision list (EDL) that transforms raw footage into a polished video.
+SYSTEM_PROMPT = """You are a world-class video editor AI with access to premium editing tools. Your job is to create a professional edit decision list (EDL) that transforms raw footage into a polished, broadcast-quality video.
 
 You will receive:
 1. A STYLE PROFILE from an example video the user likes — this tells you HOW to edit (pacing, color, energy)
 2. A TRANSCRIPT of the raw footage — this tells you WHAT the person is saying and doing
 
-Your goal: select the best, most engaging moments from the raw footage and arrange them to match the style/pacing of the example video.
+Your goal: select the best, most engaging moments from the raw footage and arrange them to match the style/pacing of the example video, using premium editing features.
 
 EDITING PRINCIPLES:
 - Hook first: Start with the most attention-grabbing moment
@@ -25,6 +25,16 @@ EDITING PRINCIPLES:
 - Highlight key moments: emphasize surprising, funny, emotional, or insightful statements
 - Cut dead air: remove pauses, "um"s, "uh"s, and filler
 - End strong: finish with a memorable moment or call-to-action
+
+PREMIUM TOOLS AVAILABLE:
+- Color Grading LUTs: cinematic-warm, cinematic-cool, moody-dark, vintage-film, vibrant, black-white, golden-hour, cyberpunk, pastel, high-contrast
+- Speed Ramping: slow-mo (0.5x) or fast-forward (2x) on specific segments
+- Zoom Effects: dynamic zoom on key moments for emphasis
+- Film Grain: light, medium, or heavy grain for cinematic texture
+- Vignette: darkened edges for focus
+- Caption Styles: standard, word-highlight (karaoke), outline, glow
+- Audio: normalize, denoise, voice-enhance, silence-removal
+- Transitions: cut, crossfade, fade_black
 
 You MUST respond with valid JSON only. No markdown, no explanation outside the JSON."""
 
@@ -94,7 +104,8 @@ Respond with this exact JSON structure:
             "start": 0.0,
             "end": 3.5,
             "reason": "Why this segment was selected",
-            "is_hook": false
+            "is_hook": false,
+            "speed": 1.0
         }}
     ],
     "captions": [
@@ -117,6 +128,17 @@ Respond with this exact JSON structure:
         "font_size": "medium",
         "color": "white",
         "background": "semi-transparent"
+    }},
+    "premium": {{
+        "lut": "none",
+        "caption_mode": "word-highlight",
+        "film_grain": "none",
+        "vignette": false,
+        "audio_normalize": true,
+        "audio_denoise": "light",
+        "voice_enhance": true,
+        "speed_ramps": [],
+        "zoom_points": []
     }}
 }}
 
@@ -126,12 +148,24 @@ IMPORTANT RULES:
 - Order segments to create a compelling narrative (not necessarily chronological)
 - Place the strongest hook moment first if the example video has fast pacing
 - Total selected segment time should approximate the target_duration
-- Add captions for key spoken moments — not every word, just impactful ones
+- "segments.speed": 1.0 = normal, 0.5 = slow-mo, 2.0 = fast forward. Use slow-mo for dramatic/key moments
+- Add captions for key spoken moments — not every word, just impactful phrases
 - Set "emphasis": true for especially important captions
 - Caption "style" can be: "standard", "bold", "highlight", or "whisper"
 - "transition_type" can be: "cut", "crossfade", "fade_black"
 - For color_adjustments: 1.0 = no change, >1.0 = increase, <1.0 = decrease
-- Make adjustments to approximately match the example video's color feel"""
+- Make adjustments to approximately match the example video's color feel
+
+PREMIUM FEATURES RULES:
+- "premium.lut": Choose a LUT that matches the example video's color feel. Options: none, cinematic-warm, cinematic-cool, moody-dark, vintage-film, vibrant, black-white, golden-hour, cyberpunk, pastel, high-contrast
+- "premium.caption_mode": word-highlight (karaoke effect), outline (bold outline no background), glow (glowing text), standard (classic box)
+- "premium.film_grain": none, light, medium, heavy — use for cinematic/vintage looks
+- "premium.vignette": true/false — adds darkened edges for cinematic focus
+- "premium.audio_normalize": true to normalize audio levels
+- "premium.audio_denoise": none, light, medium, heavy
+- "premium.voice_enhance": true to boost voice clarity
+- "premium.speed_ramps": optional list of {{start, end, speed}} for speed changes within selected segments
+- "premium.zoom_points": optional list of {{start, end, zoom_start, zoom_end, x, y}} for dynamic zoom on key moments"""
 
 
 def create_edit_plan(style_profile, transcript, api_key, model=None,
@@ -232,3 +266,19 @@ def _validate_edit_plan(plan, source_duration):
         'color': 'white',
         'background': 'semi-transparent'
     })
+
+    # Ensure premium fields exist with defaults
+    premium_defaults = {
+        'lut': 'none',
+        'caption_mode': 'standard',
+        'film_grain': 'none',
+        'vignette': False,
+        'audio_normalize': True,
+        'audio_denoise': 'none',
+        'voice_enhance': False,
+        'speed_ramps': [],
+        'zoom_points': [],
+    }
+    plan.setdefault('premium', premium_defaults)
+    for k, v in premium_defaults.items():
+        plan['premium'].setdefault(k, v)
