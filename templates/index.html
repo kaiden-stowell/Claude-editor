@@ -30,6 +30,10 @@
                 </div>
             </div>
             <div class="toolbar-right">
+                <div class="version-indicator" id="version-indicator" onclick="checkForUpdates(true)">
+                    <span class="version-label" id="version-label">v...</span>
+                    <span class="update-badge" id="update-badge" style="display:none">Update</span>
+                </div>
                 <div class="system-status">
                     <span id="connection-dot" class="status-dot checking"></span>
                     <span id="connection-text" class="status-text">Checking...</span>
@@ -386,12 +390,46 @@ PUT  /api/brands/{name}</pre>
             </div>
         </div>
 
-        <!-- Modal -->
+        <!-- Edit Plan Modal -->
         <div class="modal-overlay" id="edit-plan-modal" style="display:none">
             <div class="modal-backdrop" onclick="closeModal()"></div>
             <div class="modal-sheet">
                 <div class="modal-top"><h3>Edit Plan</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
                 <div class="modal-body"><pre id="edit-plan-content"></pre></div>
+            </div>
+        </div>
+
+        <!-- Update Modal -->
+        <div class="modal-overlay" id="update-modal" style="display:none">
+            <div class="modal-backdrop" onclick="closeUpdateModal()"></div>
+            <div class="modal-sheet update-sheet">
+                <div class="modal-top">
+                    <h3>Software Update</h3>
+                    <button class="modal-close" onclick="closeUpdateModal()">&times;</button>
+                </div>
+                <div class="modal-body update-body">
+                    <div class="update-icon">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2"/><polygon points="20,17 20,31 32,24" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="update-info">
+                        <div class="update-title" id="update-title">Claude Editor</div>
+                        <div class="update-versions">
+                            <div class="update-row">
+                                <span class="update-key">Installed</span>
+                                <span class="update-val" id="update-local">--</span>
+                            </div>
+                            <div class="update-row">
+                                <span class="update-key">Latest</span>
+                                <span class="update-val" id="update-remote">--</span>
+                            </div>
+                        </div>
+                        <div class="update-status" id="update-status">Checking for updates...</div>
+                    </div>
+                    <div class="update-actions" id="update-actions">
+                        <button class="fcp-btn" onclick="checkForUpdates(true)">Check Again</button>
+                        <button class="fcp-btn primary" id="btn-apply-update" onclick="applyUpdate()" style="display:none">Update Now</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

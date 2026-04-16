@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDragDrop();
     setupColorSync();
     buildRuler();
+    fetchVersion();
+    checkForUpdates(false);
 });
 
 /* ─── Health Check ─────────────────────────────────────────────────────── */
@@ -584,6 +586,99 @@ function resetWorkflow() {
     document.getElementById('instructions').value = '';
 
     updateProcessButton();
+}
+
+/* ─── Version & Updates ────────────────────────────────────────────────── */
+
+async function fetchVersion() {
+    try {
+        const res = await fetch(`${API}/api/info`);
+        const data = await res.json();
+        if (data.version) {
+            document.getElementById('version-label').textContent = `v${data.version}`;
+            document.getElementById('version-label').title = data.full || '';
+        }
+    } catch (e) {}
+}
+
+async function checkForUpdates(showModal) {
+    const force = showModal ? '1' : '0';
+    try {
+        const res = await fetch(`${API}/api/update/check?force=${force}`);
+        const data = await res.json();
+
+        document.getElementById('update-local').textContent = data.local || '--';
+        document.getElementById('update-remote').textContent = data.remote || '--';
+
+        const badge = document.getElementById('update-badge');
+        const status = document.getElementById('update-status');
+        const applyBtn = document.getElementById('btn-apply-update');
+
+        if (data.updateAvailable) {
+            badge.style.display = 'inline';
+            status.textContent = `Update available: v${data.remote}`;
+            status.className = 'update-status has-update';
+            applyBtn.style.display = 'inline-flex';
+        } else if (data.remote) {
+            badge.style.display = 'none';
+            status.textContent = 'You are up to date';
+            status.className = 'update-status up-to-date';
+            applyBtn.style.display = 'none';
+        } else if (data.error) {
+            status.textContent = `Could not check: ${data.error}`;
+            status.className = 'update-status error';
+            applyBtn.style.display = 'none';
+        }
+
+        if (showModal) {
+            document.getElementById('update-modal').style.display = 'flex';
+        }
+    } catch (e) {
+        if (showModal) {
+            document.getElementById('update-status').textContent = 'Failed to check for updates';
+            document.getElementById('update-status').className = 'update-status error';
+            document.getElementById('update-modal').style.display = 'flex';
+        }
+    }
+}
+
+async function applyUpdate() {
+    const status = document.getElementById('update-status');
+    const applyBtn = document.getElementById('btn-apply-update');
+
+    status.textContent = 'Updating... do not close the browser';
+    status.className = 'update-status updating';
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Updating...';
+
+    try {
+        const res = await fetch(`${API}/api/update/apply`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.ok) {
+            status.textContent = `Updated to v${data.version}! Restarting server...`;
+            status.className = 'update-status up-to-date';
+            document.getElementById('update-badge').style.display = 'none';
+
+            setTimeout(() => {
+                status.textContent = 'Reloading page...';
+                setTimeout(() => window.location.reload(), 3000);
+            }, 2000);
+        } else {
+            status.textContent = `Update failed: ${data.error}`;
+            status.className = 'update-status error';
+            applyBtn.disabled = false;
+            applyBtn.textContent = 'Update Now';
+        }
+    } catch (e) {
+        status.textContent = 'Server restarting... reloading in a few seconds';
+        status.className = 'update-status updating';
+        setTimeout(() => window.location.reload(), 5000);
+    }
+}
+
+function closeUpdateModal() {
+    document.getElementById('update-modal').style.display = 'none';
 }
 
 /* ─── Timecode Update ──────────────────────────────────────────────────── */

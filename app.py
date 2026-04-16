@@ -16,6 +16,10 @@ import uuid
 import json
 import threading
 import time
+import subprocess
+import shutil
+import urllib.request
+import base64
 from flask import Flask, request, jsonify, send_file, render_template, Response
 from flask_cors import CORS
 from config import Config
@@ -258,6 +262,157 @@ def info():
             'thumbnail': 'POST /api/premium/thumbnail/<job_id>',
         },
     })
+
+
+# ─── Update Check & Apply ────────────────────────────────────────────────────
+
+REPO_API_URL = 'https://api.github.com/repos/kaiden-stowell/Claude-editor/contents/version.py?ref=main'
+_cached_remote_version = None
+_last_version_check = 0
+
+
+def _get_local_version():
+    return VERSION
+
+
+def _parse_remote_version(content):
+    """Extract version string from remote version.py content."""
+    major = minor = patch = 0
+    tag = ''
+    for line in content.split('\n'):
+        line = line.strip()
+        if line.startswith('VERSION_MAJOR'):
+            major = int(line.split('=')[1].strip())
+        elif line.startswith('VERSION_MINOR'):
+            minor = int(line.split('=')[1].strip())
+        elif line.startswith('VERSION_PATCH'):
+            patch = int(line.split('=')[1].strip())
+        elif line.startswith('VERSION_TAG'):
+            tag = line.split('=')[1].strip().strip('"').strip("'")
+    v = f"{major}.{minor}.{patch}"
+    if tag:
+        v = f"{v}-{tag}"
+    return v
+
+
+@app.route('/api/update/check')
+def update_check():
+    """Check GitHub for a newer version."""
+    global _cached_remote_version, _last_version_check
+
+    local = _get_local_version()
+    force = request.args.get('force') == '1'
+
+    if not force and time.time() - _last_version_check < 120 and _cached_remote_version:
+        return jsonify({
+            'local': local,
+            'remote': _cached_remote_version,
+            'updateAvailable': _cached_remote_version != local,
+        })
+
+    try:
+        req = urllib.request.Request(REPO_API_URL, headers={'User-Agent': 'Claude-Editor'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        content = base64.b64decode(data['content']).decode('utf-8')
+        remote = _parse_remote_version(content)
+        _cached_remote_version = remote
+        _last_version_check = time.time()
+        return jsonify({
+            'local': local,
+            'remote': remote,
+            'updateAvailable': remote != local,
+        })
+    except Exception as e:
+        return jsonify({
+            'local': local,
+            'remote': None,
+            'updateAvailable': False,
+            'error': str(e),
+        })
+
+
+@app.route('/api/update/apply', methods=['POST'])
+def update_apply():
+    """Pull latest from GitHub and restart."""
+    global _cached_remote_version, _last_version_check
+
+    base_dir = Config.BASE_DIR
+    git_dir = os.path.join(base_dir, '.git')
+
+    if not os.path.isdir(git_dir):
+        return jsonify({'error': 'Not a git repo. Run the install script first.'}), 400
+
+    try:
+        # Backup user data
+        backup_name = f"pre-update_{time.strftime('%Y%m%d_%H%M%S')}"
+        backup_dir = os.path.join(base_dir, 'backups', backup_name)
+        os.makedirs(backup_dir, exist_ok=True)
+
+        for folder in ['uploads', 'outputs', 'logs']:
+            src = os.path.join(base_dir, folder)
+            if os.path.isdir(src):
+                shutil.copytree(src, os.path.join(backup_dir, folder), dirs_exist_ok=True)
+
+        env_file = os.path.join(base_dir, '.env')
+        if os.path.isfile(env_file):
+            shutil.copy2(env_file, os.path.join(backup_dir, '.env'))
+
+        # Git pull
+        try:
+            subprocess.run(
+                ['git', 'stash'],
+                cwd=base_dir, capture_output=True, timeout=10
+            )
+        except Exception:
+            pass
+
+        try:
+            subprocess.run(
+                ['git', 'pull', '--ff-only', 'origin', 'main'],
+                cwd=base_dir, capture_output=True, text=True, timeout=30, check=True
+            )
+        except subprocess.CalledProcessError:
+            subprocess.run(
+                ['git', 'fetch', 'origin', 'main'],
+                cwd=base_dir, capture_output=True, timeout=30, check=True
+            )
+            subprocess.run(
+                ['git', 'reset', '--hard', 'origin/main'],
+                cwd=base_dir, capture_output=True, timeout=10, check=True
+            )
+
+        # Reinstall Python dependencies
+        venv_pip = os.path.join(base_dir, 'venv', 'bin', 'pip')
+        if os.path.isfile(venv_pip):
+            subprocess.run(
+                [venv_pip, 'install', '-r', os.path.join(base_dir, 'requirements.txt'), '-q'],
+                cwd=base_dir, capture_output=True, timeout=120
+            )
+
+        _cached_remote_version = None
+        _last_version_check = 0
+
+        # Read new version
+        new_version = _get_local_version()
+        try:
+            vp = os.path.join(base_dir, 'version.py')
+            with open(vp) as f:
+                new_version = _parse_remote_version(f.read())
+        except Exception:
+            pass
+
+        # Schedule restart — launchd will restart us
+        def _restart():
+            time.sleep(1)
+            os._exit(0)
+
+        threading.Thread(target=_restart, daemon=True).start()
+
+        return jsonify({'ok': True, 'version': new_version, 'restarting': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ─── File Upload ─────────────────────────────────────────────────────────────
