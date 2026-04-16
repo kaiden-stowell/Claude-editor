@@ -277,22 +277,13 @@ def _get_local_version():
 
 def _parse_remote_version(content):
     """Extract version string from remote version.py content."""
-    major = minor = patch = 0
-    tag = ''
     for line in content.split('\n'):
         line = line.strip()
-        if line.startswith('VERSION_MAJOR'):
-            major = int(line.split('=')[1].strip())
-        elif line.startswith('VERSION_MINOR'):
-            minor = int(line.split('=')[1].strip())
-        elif line.startswith('VERSION_PATCH'):
-            patch = int(line.split('=')[1].strip())
-        elif line.startswith('VERSION_TAG'):
-            tag = line.split('=')[1].strip().strip('"').strip("'")
-    v = f"{major}.{minor}.{patch}"
-    if tag:
-        v = f"{v}-{tag}"
-    return v
+        if line.startswith('VERSION') and '=' in line and not line.startswith('VERSION_'):
+            val = line.split('=', 1)[1].strip().strip('"').strip("'")
+            if val and val[0].isdigit():
+                return val
+    return '0.0.0'
 
 
 @app.route('/api/update/check')

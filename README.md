@@ -1,6 +1,6 @@
 # Claude Editor — AI Video Editor
 
-**v2.0.0 "Director's Cut"** | Premium AI Video Editor
+**v2026.4.16 "Director's Cut"** | Premium AI Video Editor
 
 AI-powered video editor that learns editing style from an example video, then edits your raw footage to match. Built for creators, controlled by agents.
 

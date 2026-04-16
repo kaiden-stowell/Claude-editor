@@ -13,7 +13,7 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 
 echo ""
 echo "============================================"
-echo "  Claude Editor v2.0.0 — Director's Cut"
+echo "  Claude Editor v2026.4.16 — Director's Cut"
 echo "  Premium AI Video Editor Installer"
 echo "============================================"
 echo ""
