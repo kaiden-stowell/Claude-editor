@@ -1,61 +1,137 @@
-# 🎬 Claude-editor
+# Claude Editor — AI Video Editor
 
-Fully automated AI video editor that transcribes, captions, and brands your videos with AI logos. No manual editing, no complex software—just upload and download.
+AI-powered video editor that learns editing style from an example video, then edits your raw footage to match. Built for creators, controlled by agents.
 
-**[View on GitHub](https://github.com/kaiden-stowell/Claude-editor)**
+**Upload an example reel. Upload your raw footage. Get a professionally edited video back.**
 
-## ✨ Features
+## How It Works
 
-- ✅ **Fully Automated** — Upload video → Get branded reel (no manual editing)
-- ✅ **Auto-Transcription** — Speech-to-text using Whisper AI
-- ✅ **Smart Captions** — Automatically timed captions matching your speech
-- ✅ **Logo Overlays** — Add Claude, OpenAI, Gemini, Anthropic logos
-- ✅ **Web Interface** — Beautiful drag-and-drop UI with real-time progress
-- ✅ **Auto-Updates** — Built-in GitHub auto-update checker + installer
-- ✅ **AgentHub Ready** — Integrates with AgentHub for agent orchestration
-- ✅ **Queue Management** — Process multiple videos simultaneously
-- ✅ **No Dependencies** — Pure Python + FFmpeg, runs anywhere
+1. **Upload an Example Video** — Show the AI a video with the editing style you want (pacing, cuts, energy, vibe)
+2. **Upload Your Raw Footage** — The AI transcribes what you're saying and understands what you're doing
+3. **AI Edits Your Video** — Claude analyzes the style + your content, selects the best moments, adds on-brand captions, and renders the final edit
 
-## 🚀 Quick Start
+## Features
 
-### Option 1: Install via Curl (Recommended)
+- **Style Learning** — Analyzes example videos for pacing, cuts per minute, color profile, and structure
+- **Smart Transcription** — Whisper AI transcribes your speech with word-level timestamps
+- **AI Director** — Claude picks the best moments, creates a compelling narrative, matches the example's energy
+- **On-Brand Captions** — Customizable caption styles with brand colors, fonts, emphasis effects
+- **Reel-Ready** — Output in 9:16 (reel/short), 16:9 (landscape), or 1:1 (square)
+- **Agent API** — Full REST API for Claude Code and AgentHub integration
+- **Web UI** — Dark Premiere-style interface with drag-and-drop, live progress, timeline view
+- **Brand Presets** — Save and reuse your brand identity across edits
+
+## Quick Start
+
+### Install via curl
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kaiden-stowell/Claude-editor/main/install.sh | bash
 ```
 
-This will:
-- Clone the repository
-- Install all dependencies
-- Start the web server
+### Manual Setup
 
-Then open: **http://localhost:5000**
+```bash
+git clone https://github.com/kaiden-stowell/Claude-editor.git
+cd Claude-editor
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=your-key-here
+python3 app.py
+```
 
-## 📖 Usage
+Then open: **http://127.0.0.1:12795**
 
-1. **Open Web Interface** → http://localhost:5000
-2. **Upload Video** → Drag-and-drop or click to select
-3. **Select Logos** → Choose which AI logos to overlay
-4. **Process** → Click "Start Processing"
-5. **Download** → One-click download when complete
+## Requirements
 
-## 📦 What's Included
+- Python 3.9+
+- FFmpeg
+- Anthropic API key (`ANTHROPIC_API_KEY`)
 
-- `app.py` - Flask backend server
-- `index.html` - Web UI
-- `reel_editor.py` - Video processing engine
-- `update_checker.py` - Auto-update from GitHub
-- `agenthub_connector.py` - AgentHub integration
-- `install.sh` - One-command installer
+## Agent API
 
-## 🔄 Auto-Updates
+Claude Code and AgentHub can control the editor programmatically:
 
-The app automatically checks GitHub for updates.
+### Full Edit
 
-## 🤖 AgentHub Integration
+```bash
+curl -X POST http://127.0.0.1:12795/api/agent/edit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "example_video": "/path/to/example.mp4",
+    "raw_footage": "/path/to/raw.mp4",
+    "instructions": "Make it energetic and fun",
+    "output_format": "reel",
+    "brand": "default",
+    "wait": true
+  }'
+```
 
-Fully compatible with AgentHub for agent-based automation.
+### Analyze Style Only
 
-## 📝 License
+```bash
+curl -X POST http://127.0.0.1:12795/api/agent/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"video": "/path/to/video.mp4"}'
+```
+
+### Transcribe Only
+
+```bash
+curl -X POST http://127.0.0.1:12795/api/agent/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"video": "/path/to/video.mp4"}'
+```
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | System health check |
+| `GET` | `/api/info` | Editor capabilities |
+| `POST` | `/api/agent/edit` | Full edit pipeline |
+| `POST` | `/api/agent/analyze` | Analyze video style |
+| `POST` | `/api/agent/transcribe` | Transcribe video |
+| `GET` | `/api/status/<job_id>` | Job status |
+| `GET` | `/api/stream/<job_id>` | SSE progress stream |
+| `GET` | `/api/download/<job_id>` | Download result |
+| `GET` | `/api/jobs` | List all jobs |
+| `GET` | `/api/brands` | List brand presets |
+| `PUT` | `/api/brands/<name>` | Save brand config |
+
+## Project Structure
+
+```
+Claude-editor/
+├── app.py                 # Flask server + API routes
+├── config.py              # Configuration
+├── requirements.txt       # Python dependencies
+├── install.sh             # curl installer
+├── start.sh               # Start script
+├── editor/
+│   ├── analyzer.py        # Example video style analyzer
+│   ├── transcriber.py     # Whisper transcription
+│   ├── ai_director.py     # Claude AI edit planning
+│   ├── video_editor.py    # FFmpeg editing engine
+│   └── brand.py           # Brand/caption management
+├── templates/
+│   └── index.html         # Web UI
+└── static/
+    ├── css/style.css      # Dark theme
+    └── js/app.js          # Frontend logic
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | (required) | Your Anthropic API key |
+| `WHISPER_MODEL` | `base` | Whisper model size (tiny/base/small/medium/large) |
+| `CLAUDE_MODEL` | `claude-sonnet-4-20250514` | Claude model for AI Director |
+| `EDITOR_HOST` | `127.0.0.1` | Server host |
+| `EDITOR_PORT` | `12795` | Server port |
+
+## License
 
 MIT License

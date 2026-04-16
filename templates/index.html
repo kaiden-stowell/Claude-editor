@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Editor — AI Video Editor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <div class="logo">
+                    <span class="logo-icon">CE</span>
+                    <span class="logo-text">Claude Editor</span>
+                </div>
+            </div>
+            <div class="topbar-center">
+                <div class="status-bar">
+                    <span id="connection-dot" class="dot dot-checking"></span>
+                    <span id="connection-text">Checking system...</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <button class="btn btn-ghost" onclick="showPanel('agent')">Agent API</button>
+                <button class="btn btn-ghost" onclick="showPanel('brand')">Brand</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="workspace">
+            <!-- Left Panel: Steps -->
+            <aside class="panel panel-left" id="steps-panel">
+                <div class="panel-header">Workflow</div>
+
+                <!-- Step 1: Example Video -->
+                <div class="step" id="step-1">
+                    <div class="step-header" onclick="toggleStep(1)">
+                        <span class="step-num">1</span>
+                        <span class="step-title">Example Video</span>
+                        <span class="step-status" id="step1-status"></span>
+                    </div>
+                    <div class="step-body" id="step1-body">
+                        <p class="step-desc">Upload a video that shows the editing style you want. The AI will learn its pacing, cuts, colors, and vibe.</p>
+                        <div class="dropzone" id="dropzone-example" ondrop="handleDrop(event, 'example')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                            <div class="dropzone-content">
+                                <div class="dropzone-icon">&#9654;</div>
+                                <div class="dropzone-text">Drop example video here</div>
+                                <div class="dropzone-sub">or click to browse</div>
+                            </div>
+                            <input type="file" accept="video/*" onchange="handleFileSelect(this, 'example')" hidden>
+                        </div>
+                        <div class="file-info" id="example-info" style="display:none"></div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Raw Footage -->
+                <div class="step" id="step-2">
+                    <div class="step-header" onclick="toggleStep(2)">
+                        <span class="step-num">2</span>
+                        <span class="step-title">Raw Footage</span>
+                        <span class="step-status" id="step2-status"></span>
+                    </div>
+                    <div class="step-body" id="step2-body">
+                        <p class="step-desc">Upload your raw footage. The AI will transcribe what you're saying and understand what you're doing.</p>
+                        <div class="dropzone" id="dropzone-raw" ondrop="handleDrop(event, 'raw')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                            <div class="dropzone-content">
+                                <div class="dropzone-icon">&#127909;</div>
+                                <div class="dropzone-text">Drop raw footage here</div>
+                                <div class="dropzone-sub">or click to browse</div>
+                            </div>
+                            <input type="file" accept="video/*" onchange="handleFileSelect(this, 'raw')" hidden>
+                        </div>
+                        <div class="file-info" id="raw-info" style="display:none"></div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Settings -->
+                <div class="step" id="step-3">
+                    <div class="step-header" onclick="toggleStep(3)">
+                        <span class="step-num">3</span>
+                        <span class="step-title">Edit Settings</span>
+                        <span class="step-status" id="step3-status"></span>
+                    </div>
+                    <div class="step-body" id="step3-body">
+                        <div class="form-group">
+                            <label>Output Format</label>
+                            <div class="format-options">
+                                <button class="format-btn active" data-format="reel" onclick="selectFormat(this)">
+                                    <div class="format-preview format-reel"></div>
+                                    <span>Reel 9:16</span>
+                                </button>
+                                <button class="format-btn" data-format="landscape" onclick="selectFormat(this)">
+                                    <div class="format-preview format-landscape"></div>
+                                    <span>Wide 16:9</span>
+                                </button>
+                                <button class="format-btn" data-format="square" onclick="selectFormat(this)">
+                                    <div class="format-preview format-square"></div>
+                                    <span>Square 1:1</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Brand Preset</label>
+                            <select id="brand-select" onchange="selectBrand(this.value)">
+                                <option value="default">Default</option>
+                                <option value="clean-white">Clean White</option>
+                                <option value="bold-dark">Bold Dark</option>
+                                <option value="neon-pop">Neon Pop</option>
+                                <option value="minimal">Minimal</option>
+                                <option value="warm-creator">Warm Creator</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Instructions <span class="optional">(optional)</span></label>
+                            <textarea id="instructions" placeholder="e.g. Make it energetic and fun, focus on the product demo parts, keep it under 30 seconds..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Button -->
+                <div class="step-action">
+                    <button class="btn btn-primary btn-lg" id="btn-process" onclick="startProcessing()" disabled>
+                        Start AI Edit
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Center: Preview & Timeline -->
+            <section class="center-panel">
+                <!-- Preview Monitor -->
+                <div class="preview-monitor">
+                    <div class="monitor-frame" id="monitor">
+                        <div class="monitor-placeholder" id="monitor-placeholder">
+                            <div class="monitor-logo">CE</div>
+                            <div class="monitor-text">Upload an example video and raw footage to get started</div>
+                        </div>
+                        <video id="preview-video" controls style="display:none"></video>
+                    </div>
+                </div>
+
+                <!-- Progress Bar (shown during processing) -->
+                <div class="progress-container" id="progress-container" style="display:none">
+                    <div class="progress-header">
+                        <span id="progress-stage">Initializing...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+                    </div>
+                    <div class="progress-steps">
+                        <div class="p-step" id="pstep-analyze"><span class="p-dot"></span> Analyze Style</div>
+                        <div class="p-step" id="pstep-transcribe"><span class="p-dot"></span> Transcribe</div>
+                        <div class="p-step" id="pstep-plan"><span class="p-dot"></span> AI Director</div>
+                        <div class="p-step" id="pstep-render"><span class="p-dot"></span> Render</div>
+                    </div>
+                </div>
+
+                <!-- Timeline (shown after processing) -->
+                <div class="timeline-container" id="timeline-container" style="display:none">
+                    <div class="timeline-header">
+                        <span class="timeline-title">Timeline</span>
+                        <span class="timeline-info" id="timeline-info"></span>
+                    </div>
+                    <div class="timeline" id="timeline"></div>
+                </div>
+
+                <!-- Results (shown after processing) -->
+                <div class="results-container" id="results-container" style="display:none">
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-title" id="result-title"></span>
+                        </div>
+                        <div class="result-meta" id="result-meta"></div>
+                        <div class="result-actions">
+                            <button class="btn btn-primary" id="btn-download" onclick="downloadVideo()">Download Video</button>
+                            <button class="btn btn-ghost" onclick="showEditPlan()">View Edit Plan</button>
+                            <button class="btn btn-ghost" onclick="resetWorkflow()">New Edit</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Overlays -->
+            <aside class="panel panel-right" id="panel-right" style="display:none">
+                <!-- Brand Panel -->
+                <div id="brand-panel" style="display:none">
+                    <div class="panel-header">
+                        Brand Settings
+                        <button class="btn-close" onclick="hidePanel()">&times;</button>
+                    </div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            <label>Primary Color</label>
+                            <div class="color-row">
+                                <input type="color" id="brand-primary" value="#FFFFFF">
+                                <input type="text" id="brand-primary-hex" value="#FFFFFF" class="color-hex">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Accent Color (emphasis)</label>
+                            <div class="color-row">
+                                <input type="color" id="brand-accent" value="#FFD700">
+                                <input type="text" id="brand-accent-hex" value="#FFD700" class="color-hex">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Caption Position</label>
+                            <select id="brand-position">
+                                <option value="bottom">Bottom</option>
+                                <option value="center">Center</option>
+                                <option value="top">Top</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Caption Size</label>
+                            <select id="brand-size">
+                                <option value="small">Small</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Background</label>
+                            <select id="brand-bg">
+                                <option value="semi-transparent">Semi-transparent</option>
+                                <option value="solid">Solid</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Emphasis Style</label>
+                            <select id="brand-emphasis">
+                                <option value="highlight">Highlight</option>
+                                <option value="scale">Scale Up</option>
+                                <option value="bold">Bold</option>
+                                <option value="color">Color Change</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Brand Name</label>
+                            <input type="text" id="brand-name" placeholder="my-brand">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveBrand()">Save Brand</button>
+                    </div>
+                </div>
+
+                <!-- Agent API Panel -->
+                <div id="agent-panel" style="display:none">
+                    <div class="panel-header">
+                        Agent API
+                        <button class="btn-close" onclick="hidePanel()">&times;</button>
+                    </div>
+                    <div class="panel-body">
+                        <p class="panel-desc">Connect Claude Code or AgentHub to control this editor programmatically.</p>
+
+                        <div class="api-section">
+                            <h4>Server URL</h4>
+                            <code class="api-url" id="api-url">http://127.0.0.1:12795</code>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Full Edit (Agent)</h4>
+                            <pre class="api-example">POST /api/agent/edit
+{
+  "example_video": "/path/to/example.mp4",
+  "raw_footage": "/path/to/raw.mp4",
+  "instructions": "Make it energetic",
+  "output_format": "reel",
+  "brand": "default",
+  "wait": true
+}</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Analyze Style</h4>
+                            <pre class="api-example">POST /api/agent/analyze
+{
+  "video": "/path/to/video.mp4"
+}</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Transcribe</h4>
+                            <pre class="api-example">POST /api/agent/transcribe
+{
+  "video": "/path/to/video.mp4"
+}</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Check Status</h4>
+                            <pre class="api-example">GET /api/status/{job_id}
+GET /api/stream/{job_id}  (SSE)
+GET /api/jobs</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Download Result</h4>
+                            <pre class="api-example">GET /api/download/{job_id}</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>curl Example</h4>
+                            <pre class="api-example">curl -X POST http://127.0.0.1:12795/api/agent/edit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "example_video": "example.mp4",
+    "raw_footage": "raw.mp4",
+    "output_format": "reel",
+    "wait": true
+  }'</pre>
+                        </div>
+
+                        <div class="api-section">
+                            <h4>Health Check</h4>
+                            <pre class="api-example">GET /api/health
+GET /api/info</pre>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Edit Plan Modal -->
+        <div class="modal" id="edit-plan-modal" style="display:none">
+            <div class="modal-backdrop" onclick="closeModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Plan</h3>
+                    <button class="btn-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <pre id="edit-plan-content"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
