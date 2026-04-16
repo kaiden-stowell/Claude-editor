@@ -28,12 +28,18 @@ from editor.brand import (
     brand_to_caption_style, PRESETS, DEFAULT_BRAND
 )
 from editor.effects import list_available_effects, list_available_luts, LUTS
-from editor.audio import detect_silence
+from editor.audio import detect_silence, remove_silence
 from editor.captions import list_caption_styles
 from editor.export import (
     export_for_platform, export_multi_platform, export_with_quality,
     generate_thumbnail, list_export_presets, list_quality_tiers
 )
+from editor.transitions import list_transitions
+from editor.stabilize import stabilize_video, detect_shakiness
+from editor.chromakey import apply_chroma_key, apply_blur_background
+from editor.beat_sync import detect_beats, create_beat_synced_edit
+from editor.motion_graphics import list_templates as list_mg_templates
+from editor.auto_reframe import auto_reframe
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -737,6 +743,174 @@ def api_silence_detect():
         'total_silence': round(sum(s['duration'] for s in silences), 2),
         'silent_segments': len(silences),
     })
+
+
+@app.route('/api/premium/silence-remove', methods=['POST'])
+def api_silence_remove():
+    """Auto-remove silent segments (jump-cut style)."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'jumpcut_{uuid.uuid4().hex[:8]}.mp4'))
+    result = remove_silence(path, output_path)
+    return jsonify(result)
+
+
+@app.route('/api/premium/transitions')
+def api_transitions():
+    """List all 30+ transitions."""
+    return jsonify(list_transitions())
+
+
+@app.route('/api/premium/stabilize', methods=['POST'])
+def api_stabilize():
+    """Stabilize shaky video (like Premiere's Warp Stabilizer)."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    strength = data.get('strength', 'medium')
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'stabilized_{uuid.uuid4().hex[:8]}.mp4'))
+
+    try:
+        result = stabilize_video(path, output_path, strength)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/premium/shake-detect', methods=['POST'])
+def api_shake_detect():
+    """Analyze how shaky a video is and recommend stabilization level."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    result = detect_shakiness(path)
+    return jsonify(result)
+
+
+@app.route('/api/premium/chroma-key', methods=['POST'])
+def api_chroma_key():
+    """Green screen / chroma key removal."""
+    data = request.get_json()
+    if not data or not data.get('foreground'):
+        return jsonify({'error': 'foreground video path required'}), 400
+    if not data.get('background'):
+        return jsonify({'error': 'background video/image path required'}), 400
+
+    fg = data['foreground']
+    bg = data['background']
+    if not os.path.exists(fg) or not os.path.exists(bg):
+        return jsonify({'error': 'File not found'}), 400
+
+    color = data.get('key_color', 'green')
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'keyed_{uuid.uuid4().hex[:8]}.mp4'))
+
+    try:
+        result = apply_chroma_key(fg, bg, output_path, color)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/premium/blur-background', methods=['POST'])
+def api_blur_bg():
+    """Create a blurred-background portrait mode effect."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'blur_bg_{uuid.uuid4().hex[:8]}.mp4'))
+
+    try:
+        result = apply_blur_background(path, output_path)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/premium/beat-detect', methods=['POST'])
+def api_beat_detect():
+    """Detect beats in music/audio for beat-synced editing."""
+    data = request.get_json()
+    if not data or not data.get('audio'):
+        return jsonify({'error': 'audio/video path required'}), 400
+
+    path = data['audio']
+    if not os.path.exists(path):
+        return jsonify({'error': f'File not found: {path}'}), 400
+
+    sensitivity = data.get('sensitivity', 'medium')
+    result = detect_beats(path, sensitivity)
+    return jsonify(result)
+
+
+@app.route('/api/premium/beat-sync', methods=['POST'])
+def api_beat_sync():
+    """Create a beat-synced edit (cuts on the beat)."""
+    data = request.get_json()
+    if not data or not data.get('video') or not data.get('music'):
+        return jsonify({'error': 'video and music paths required'}), 400
+
+    video = data['video']
+    music = data['music']
+    if not os.path.exists(video) or not os.path.exists(music):
+        return jsonify({'error': 'File not found'}), 400
+
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'beatsync_{uuid.uuid4().hex[:8]}.mp4'))
+    target_duration = data.get('duration', 30)
+
+    try:
+        result = create_beat_synced_edit(video, music, output_path, target_duration)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/premium/auto-reframe', methods=['POST'])
+def api_auto_reframe():
+    """Auto-reframe video with face/subject tracking."""
+    data = request.get_json()
+    if not data or not data.get('video'):
+        return jsonify({'error': 'video path required'}), 400
+
+    path = data['video']
+    if not os.path.exists(path):
+        return jsonify({'error': f'Video not found: {path}'}), 400
+
+    target = data.get('format', 'reel')
+    method = data.get('method', 'face')
+    output_path = data.get('output', os.path.join(Config.OUTPUT_FOLDER, f'reframed_{uuid.uuid4().hex[:8]}.mp4'))
+
+    try:
+        result = auto_reframe(path, output_path, target, method)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/premium/templates')
+def api_templates():
+    """List motion graphics templates (lower thirds, titles, intros, outros)."""
+    return jsonify(list_mg_templates())
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────
