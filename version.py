@@ -5,13 +5,13 @@ Single source of truth for all version information.
 Uses date-based versioning: YYYY.M.DD
 """
 
-VERSION = "2026.4.16"
+VERSION = "2026.4.17"
 
 # Human-readable codename for this release
 CODENAME = "Director's Cut"
 
 # Build metadata
-BUILD_DATE = "2026-04-16"
+BUILD_DATE = "2026-04-17"
 
 # Full version string
 FULL_VERSION = f"Claude Editor v{VERSION} ({CODENAME})"
