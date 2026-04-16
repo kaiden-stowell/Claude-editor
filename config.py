@@ -10,7 +10,10 @@ class Config:
     WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'base')
     CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-6')
     HOST = os.environ.get('EDITOR_HOST', '127.0.0.1')
-    PORT = int(os.environ.get('EDITOR_PORT', '12795'))
+    try:
+        PORT = int(os.environ.get('EDITOR_PORT', '12795'))
+    except ValueError:
+        PORT = 12795
     SECRET_KEY = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 
     @classmethod

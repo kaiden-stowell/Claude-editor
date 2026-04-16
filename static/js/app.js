@@ -1,4 +1,6 @@
 const API = '';
+const STORAGE_KEY = 'claude-editor-state';
+
 let state = {
     exampleFile: null,
     examplePath: null,
@@ -8,18 +10,167 @@ let state = {
     brand: 'default',
     jobId: null,
     eventSource: null,
+    inspectorVisible: true,
+    activeView: 'edit',
+    activeBrowserTab: 'media',
+    activeInspectorTab: 'settings',
 };
 
+/* ─── LocalStorage Persistence ─────────────────────────────────────────── */
+
+function saveState() {
+    const persist = {
+        outputFormat: state.outputFormat,
+        brand: state.brand,
+        inspectorVisible: state.inspectorVisible,
+        activeView: state.activeView,
+        activeBrowserTab: state.activeBrowserTab,
+        activeInspectorTab: state.activeInspectorTab,
+        instructions: document.getElementById('instructions')?.value || '',
+        premiumLut: document.getElementById('premium-lut')?.value || 'auto',
+        premiumCaptions: document.getElementById('premium-captions')?.value || 'auto',
+        premiumGrain: document.getElementById('premium-grain')?.value || 'auto',
+        premiumPlatform: document.getElementById('premium-platform')?.value || 'auto',
+        premiumNormalize: document.getElementById('premium-normalize')?.checked ?? true,
+        premiumDenoise: document.getElementById('premium-denoise')?.checked ?? true,
+        premiumVoice: document.getElementById('premium-voice')?.checked ?? false,
+        premiumVignette: document.getElementById('premium-vignette')?.checked ?? false,
+        collapsedSections: getCollapsedSections(),
+    };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(persist)); } catch (e) {}
+}
+
+function loadState() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (!saved) return;
+
+        state.outputFormat = saved.outputFormat || 'reel';
+        state.brand = saved.brand || 'default';
+        state.inspectorVisible = saved.inspectorVisible !== false;
+        state.activeView = saved.activeView || 'edit';
+        state.activeBrowserTab = saved.activeBrowserTab || 'media';
+        state.activeInspectorTab = saved.activeInspectorTab || 'settings';
+
+        // Restore format card
+        document.querySelectorAll('.format-card').forEach(b => {
+            b.classList.toggle('active', b.dataset.format === state.outputFormat);
+        });
+
+        // Restore brand dropdown
+        const brandSelect = document.getElementById('brand-select');
+        if (brandSelect) brandSelect.value = state.brand;
+
+        // Restore instructions
+        if (saved.instructions) {
+            const el = document.getElementById('instructions');
+            if (el) el.value = saved.instructions;
+        }
+
+        // Restore premium settings
+        setSelectValue('premium-lut', saved.premiumLut);
+        setSelectValue('premium-captions', saved.premiumCaptions);
+        setSelectValue('premium-grain', saved.premiumGrain);
+        setSelectValue('premium-platform', saved.premiumPlatform);
+        setCheckbox('premium-normalize', saved.premiumNormalize);
+        setCheckbox('premium-denoise', saved.premiumDenoise);
+        setCheckbox('premium-voice', saved.premiumVoice);
+        setCheckbox('premium-vignette', saved.premiumVignette);
+
+        // Restore inspector visibility
+        const inspector = document.getElementById('inspector-panel');
+        if (inspector) inspector.classList.toggle('hidden', !state.inspectorVisible);
+
+        // Restore view tabs
+        switchView(state.activeView, true);
+        switchBrowserTab(state.activeBrowserTab, true);
+        switchInspectorTab(state.activeInspectorTab, true);
+
+        // Restore collapsed sections
+        if (saved.collapsedSections) restoreCollapsedSections(saved.collapsedSections);
+
+    } catch (e) {}
+}
+
+function setSelectValue(id, val) {
+    const el = document.getElementById(id);
+    if (el && val !== undefined) el.value = val;
+}
+
+function setCheckbox(id, val) {
+    const el = document.getElementById(id);
+    if (el && val !== undefined) el.checked = val;
+}
+
+function getCollapsedSections() {
+    const collapsed = [];
+    document.querySelectorAll('.section-header.collapsed').forEach(h => {
+        const label = h.querySelector('span')?.textContent;
+        if (label) collapsed.push(label);
+    });
+    return collapsed;
+}
+
+function restoreCollapsedSections(collapsed) {
+    document.querySelectorAll('.section-header').forEach(h => {
+        const label = h.querySelector('span')?.textContent;
+        if (label && collapsed.includes(label)) {
+            h.classList.add('collapsed');
+            const body = h.nextElementSibling;
+            if (body) body.classList.add('collapsed');
+        }
+    });
+}
+
+/* ─── Init ─────────────────────────────────────────────────────────────── */
+
 document.addEventListener('DOMContentLoaded', () => {
+    loadState();
     checkHealth();
     loadBrands();
     loadJobs();
     setupDragDrop();
     setupColorSync();
+    setupAutoSave();
     buildRuler();
     fetchVersion();
     checkForUpdates(false);
+    setupVideoErrorHandler();
 });
+
+function setupAutoSave() {
+    // Save state whenever form inputs change
+    document.querySelectorAll('select, textarea, input[type="checkbox"]').forEach(el => {
+        el.addEventListener('change', () => saveState());
+    });
+    document.querySelectorAll('textarea').forEach(el => {
+        el.addEventListener('input', debounce(() => saveState(), 500));
+    });
+}
+
+function debounce(fn, ms) {
+    let timer;
+    return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+function setupVideoErrorHandler() {
+    const video = document.getElementById('preview-video');
+    if (video) {
+        video.addEventListener('error', () => {
+            video.style.display = 'none';
+            document.getElementById('viewer-placeholder').style.display = 'flex';
+        });
+        video.addEventListener('ended', () => {
+            document.getElementById('btn-play').textContent = '\u25B6';
+        });
+        video.addEventListener('pause', () => {
+            document.getElementById('btn-play').textContent = '\u25B6';
+        });
+        video.addEventListener('play', () => {
+            document.getElementById('btn-play').textContent = '\u23F8';
+        });
+    }
+}
 
 /* ─── Health Check ─────────────────────────────────────────────────────── */
 
@@ -28,13 +179,14 @@ async function checkHealth() {
     const text = document.getElementById('connection-text');
     try {
         const res = await fetch(`${API}/api/health`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.healthy) {
             dot.className = 'status-dot ok';
             text.textContent = 'Ready';
         } else {
             dot.className = 'status-dot warn';
-            const missing = Object.entries(data.checks).filter(([_,ok]) => !ok).map(([k]) => k);
+            const missing = Object.entries(data.checks).filter(([_, ok]) => !ok).map(([k]) => k);
             text.textContent = `Missing: ${missing.join(', ')}`;
         }
     } catch (e) {
@@ -81,11 +233,20 @@ function handleImport(input) {
 
 async function importFile(file) {
     const type = !state.examplePath ? 'example' : 'raw';
+
+    if (type === 'raw' && state.exampleFile && file.name === state.exampleFile.name && file.size === state.exampleFile.size) {
+        showToast('Please select a different file for raw footage', 'warn');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
+    showToast(`Importing ${file.name}...`, 'info');
+
     try {
         const res = await fetch(`${API}/api/upload/${type}`, { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(`Upload failed: HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
@@ -100,8 +261,10 @@ async function importFile(file) {
         addMediaItem(file, type, data.size_mb);
         addClipToTimeline(file.name, type, data.duration || 0);
         updateProcessButton();
+        updateTimelineInfo();
+        showToast(`${type === 'example' ? 'Example' : 'Raw footage'} imported`, 'ok');
     } catch (err) {
-        console.error('Import failed:', err);
+        showToast(`Import failed: ${err.message}`, 'error');
     }
 }
 
@@ -119,6 +282,12 @@ function addMediaItem(file, type, sizeMb) {
         <span class="media-label">${file.name}</span>
     `;
     grid.appendChild(item);
+
+    // Auto-select first imported item
+    if (!document.querySelector('.media-item.selected')) {
+        item.classList.add('selected');
+        document.getElementById('viewer-title').textContent = file.name;
+    }
 }
 
 function selectMediaItem(item, file, type) {
@@ -148,40 +317,85 @@ function addClipToTimeline(name, type, duration) {
 }
 
 function updateProcessButton() {
-    document.getElementById('btn-process').disabled = !(state.examplePath && state.rawPath);
+    const btn = document.getElementById('btn-process');
+    const ready = !!(state.examplePath && state.rawPath);
+    btn.disabled = !ready;
+    if (ready) {
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="1,0 1,12 11,6"/></svg> Start AI Edit';
+    }
+}
+
+function updateTimelineInfo() {
+    const info = document.getElementById('timeline-info');
+    const clips = document.getElementById('track-video-lane')?.querySelectorAll('.clip').length || 0;
+    if (clips > 0) {
+        info.textContent = `${clips} clip${clips !== 1 ? 's' : ''} imported`;
+    }
+}
+
+/* ─── Toast Notifications ──────────────────────────────────────────────── */
+
+function showToast(message, type) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type || 'info'}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('visible'));
+
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 /* ─── View Switching ───────────────────────────────────────────────────── */
 
-function switchView(view) {
+function switchView(view, skipSave) {
+    state.activeView = view;
     document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-    if (view === 'color') switchInspectorTab('effects');
-    else if (view === 'export') switchInspectorTab('settings');
-    else switchInspectorTab('settings');
+    if (view === 'color') switchInspectorTab('effects', true);
+    else if (view === 'export') switchInspectorTab('settings', true);
+    if (!skipSave) saveState();
 }
 
 /* ─── Browser Tabs ─────────────────────────────────────────────────────── */
 
-function switchBrowserTab(tab) {
+function switchBrowserTab(tab, skipSave) {
+    state.activeBrowserTab = tab;
     const panel = document.getElementById('browser-panel');
     panel.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
     ['media', 'brands', 'jobs'].forEach(t => {
-        document.getElementById(`tab-${t}`).style.display = t === tab ? 'block' : 'none';
+        const el = document.getElementById(`tab-${t}`);
+        if (el) el.style.display = t === tab ? 'block' : 'none';
     });
+    if (!skipSave) saveState();
 }
 
 /* ─── Inspector Tabs ───────────────────────────────────────────────────── */
 
-function switchInspectorTab(tab) {
+function switchInspectorTab(tab, skipSave) {
+    state.activeInspectorTab = tab;
     const panel = document.getElementById('inspector-panel');
     panel.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
     ['settings', 'effects', 'api'].forEach(t => {
-        document.getElementById(`inspector-${t}`).style.display = t === tab ? 'block' : 'none';
+        const el = document.getElementById(`inspector-${t}`);
+        if (el) el.style.display = t === tab ? 'block' : 'none';
     });
+    if (!skipSave) saveState();
 }
 
 function toggleInspector() {
-    document.getElementById('inspector-panel').classList.toggle('hidden');
+    state.inspectorVisible = !state.inspectorVisible;
+    document.getElementById('inspector-panel').classList.toggle('hidden', !state.inspectorVisible);
+    saveState();
 }
 
 /* ─── Section Toggle ───────────────────────────────────────────────────── */
@@ -190,6 +404,7 @@ function toggleSection(header) {
     header.classList.toggle('collapsed');
     const body = header.nextElementSibling;
     if (body) body.classList.toggle('collapsed');
+    saveState();
 }
 
 /* ─── Format & Brand ───────────────────────────────────────────────────── */
@@ -198,35 +413,41 @@ function selectFormat(btn) {
     document.querySelectorAll('.format-card').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.outputFormat = btn.dataset.format;
+    saveState();
 }
 
 function selectBrand(name) {
     state.brand = name;
+    const select = document.getElementById('brand-select');
+    if (select) select.value = name;
+    saveState();
 }
 
 /* ─── Transport Controls ──────────────────────────────────────────────── */
 
 function transportAction(action) {
     const video = document.getElementById('preview-video');
-    if (!video.src) return;
+    if (!video || !video.src || video.src === window.location.href) return;
     switch (action) {
         case 'play':
-            if (video.paused) { video.play(); document.getElementById('btn-play').textContent = '\u23F8'; }
-            else { video.pause(); document.getElementById('btn-play').textContent = '\u25B6'; }
+            if (video.paused) video.play();
+            else video.pause();
             break;
         case 'start': video.currentTime = 0; break;
-        case 'end': video.currentTime = video.duration; break;
-        case 'back': video.currentTime = Math.max(0, video.currentTime - 1/30); break;
-        case 'forward': video.currentTime = Math.min(video.duration, video.currentTime + 1/30); break;
+        case 'end': if (video.duration) video.currentTime = video.duration; break;
+        case 'back': video.currentTime = Math.max(0, video.currentTime - 1 / 30); break;
+        case 'forward': if (video.duration) video.currentTime = Math.min(video.duration, video.currentTime + 1 / 30); break;
     }
 }
 
 /* ─── Timeline Ruler ──────────────────────────────────────────────────── */
 
-function buildRuler() {
+function buildRuler(totalSeconds) {
     const ruler = document.getElementById('timeline-ruler');
+    const total = totalSeconds || 60;
     let html = '';
-    for (let i = 0; i <= 60; i += 5) {
+    const step = total > 120 ? 10 : 5;
+    for (let i = 0; i <= total; i += step) {
         const x = i * 8;
         html += `<span style="position:absolute;left:${x}px;top:4px;font-size:9px;color:#666;font-family:monospace">${formatTC(i)}</span>`;
     }
@@ -246,6 +467,7 @@ async function startProcessing() {
 
     const btn = document.getElementById('btn-process');
     btn.disabled = true;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" class="spin"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-dasharray="20 12"/></svg> Processing...';
 
     document.getElementById('timeline-progress').style.display = 'flex';
     document.getElementById('results-bar').style.display = 'none';
@@ -276,24 +498,33 @@ async function startProcessing() {
                 brand: state.brand,
             }),
         });
+        if (!res.ok) throw new Error(`Server error: HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         state.jobId = data.job_id;
         startProgressStream(data.job_id);
     } catch (err) {
-        alert(`Error: ${err.message}`);
-        btn.disabled = false;
+        showToast(`Error: ${err.message}`, 'error');
+        resetProcessButton();
     }
+}
+
+function resetProcessButton() {
+    const btn = document.getElementById('btn-process');
+    btn.disabled = !(state.examplePath && state.rawPath);
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="1,0 1,12 11,6"/></svg> Start AI Edit';
 }
 
 function startProgressStream(jobId) {
     if (state.eventSource) state.eventSource.close();
     state.eventSource = new EventSource(`${API}/api/stream/${jobId}`);
     state.eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        updateProgress(data);
-        if (data.status === 'complete') { state.eventSource.close(); onComplete(data); }
-        else if (data.status === 'error') { state.eventSource.close(); onError(data); }
+        try {
+            const data = JSON.parse(event.data);
+            updateProgress(data);
+            if (data.status === 'complete') { state.eventSource.close(); onComplete(data); }
+            else if (data.status === 'error') { state.eventSource.close(); onError(data); }
+        } catch (e) {}
     };
     state.eventSource.onerror = () => { state.eventSource.close(); pollStatus(jobId); };
 }
@@ -302,6 +533,7 @@ async function pollStatus(jobId) {
     const interval = setInterval(async () => {
         try {
             const res = await fetch(`${API}/api/status/${jobId}`);
+            if (!res.ok) return;
             const data = await res.json();
             updateProgress(data);
             if (data.status === 'complete') { clearInterval(interval); onComplete(data); }
@@ -311,9 +543,12 @@ async function pollStatus(jobId) {
 }
 
 function updateProgress(data) {
-    document.getElementById('progress-stage').textContent = data.current_message || 'Processing...';
-    document.getElementById('progress-percent').textContent = `${data.overall_percent || 0}%`;
-    document.getElementById('progress-fill').style.width = `${data.overall_percent || 0}%`;
+    const stageEl = document.getElementById('progress-stage');
+    const pctEl = document.getElementById('progress-percent');
+    const fillEl = document.getElementById('progress-fill');
+    if (stageEl) stageEl.textContent = data.current_message || 'Processing...';
+    if (pctEl) pctEl.textContent = `${data.overall_percent || 0}%`;
+    if (fillEl) fillEl.style.width = `${data.overall_percent || 0}%`;
 
     const stageMap = { analyzing: 'analyze', transcribing: 'transcribe', planning: 'plan', editing: 'render' };
     const stages = ['analyze', 'transcribe', 'plan', 'render'];
@@ -321,6 +556,7 @@ function updateProgress(data) {
     const currentIdx = stages.indexOf(currentStage);
     stages.forEach((s, i) => {
         const el = document.getElementById(`pstep-${s}`);
+        if (!el) return;
         el.className = 'pipeline-step';
         if (i < currentIdx) el.classList.add('done');
         else if (i === currentIdx) el.classList.add('active');
@@ -342,18 +578,19 @@ function onComplete(data) {
     const video = document.getElementById('preview-video');
     video.src = `${API}/api/download/${state.jobId}`;
     video.style.display = 'block';
+    document.getElementById('viewer-placeholder').style.display = 'none';
     document.getElementById('viewer-title').textContent = output.title || 'Output';
 
     buildEditTimeline();
     loadJobs();
-
-    document.getElementById('btn-process').disabled = false;
+    resetProcessButton();
+    showToast('Edit complete!', 'ok');
 }
 
 function onError(data) {
     document.getElementById('timeline-progress').style.display = 'none';
-    alert(`Editing failed: ${data.error || 'Unknown error'}`);
-    document.getElementById('btn-process').disabled = false;
+    showToast(`Editing failed: ${data.error || 'Unknown error'}`, 'error');
+    resetProcessButton();
 }
 
 /* ─── Build Edit Timeline ─────────────────────────────────────────────── */
@@ -361,6 +598,7 @@ function onError(data) {
 async function buildEditTimeline() {
     try {
         const res = await fetch(`${API}/api/edit-plan/${state.jobId}`);
+        if (!res.ok) return;
         const data = await res.json();
         if (!data.edit_plan || !data.edit_plan.segments) return;
 
@@ -377,7 +615,7 @@ async function buildEditTimeline() {
         const info = document.getElementById('timeline-info');
         info.textContent = `${segments.length} segments | ${totalDur.toFixed(1)}s`;
 
-        segments.forEach((seg, i) => {
+        segments.forEach((seg) => {
             const dur = seg.end - seg.start;
             const w = Math.max(30, dur * 8);
 
@@ -405,56 +643,62 @@ async function buildEditTimeline() {
             });
         }
 
-        buildRuler();
-    } catch (e) {}
+        buildRuler(Math.ceil(totalDur) + 5);
+    } catch (e) {
+        showToast('Could not load edit timeline', 'warn');
+    }
 }
 
 /* ─── Download / Export ────────────────────────────────────────────────── */
 
 function downloadVideo() {
-    if (state.jobId) window.location.href = `${API}/api/download/${state.jobId}`;
+    if (!state.jobId) { showToast('No video to download', 'warn'); return; }
+    window.location.href = `${API}/api/download/${state.jobId}`;
 }
 
 async function exportForPlatform() {
-    if (!state.jobId) return;
+    if (!state.jobId) { showToast('Process a video first', 'warn'); return; }
     const platform = document.getElementById('premium-platform').value;
-    if (platform === 'auto') { alert('Select a platform first.'); return; }
+    if (platform === 'auto') { showToast('Select a platform in the inspector first', 'warn'); return; }
     try {
         const res = await fetch(`${API}/api/premium/export/${state.jobId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ platform }),
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (data.error) alert(`Export failed: ${data.error}`);
-        else alert(`Exported for ${data.preset_name}! ${data.size_mb} MB`);
-    } catch (e) { alert(`Export error: ${e.message}`); }
+        if (data.error) showToast(`Export failed: ${data.error}`, 'error');
+        else showToast(`Exported for ${data.preset_name}! ${data.size_mb} MB`, 'ok');
+    } catch (e) { showToast(`Export error: ${e.message}`, 'error'); }
 }
 
 async function generateThumbnail() {
-    if (!state.jobId) return;
+    if (!state.jobId) { showToast('Process a video first', 'warn'); return; }
     try {
         const res = await fetch(`${API}/api/premium/thumbnail/${state.jobId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (data.error) alert(`Thumbnail failed: ${data.error}`);
+        if (data.error) showToast(`Thumbnail failed: ${data.error}`, 'error');
         else window.open(`${API}/api/premium/thumbnail/${state.jobId}/download`, '_blank');
-    } catch (e) { alert(`Thumbnail error: ${e.message}`); }
+    } catch (e) { showToast(`Thumbnail error: ${e.message}`, 'error'); }
 }
 
 /* ─── Edit Plan Modal ──────────────────────────────────────────────────── */
 
 async function showEditPlan() {
-    if (!state.jobId) return;
+    if (!state.jobId) { showToast('Process a video first', 'warn'); return; }
     try {
         const res = await fetch(`${API}/api/edit-plan/${state.jobId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         document.getElementById('edit-plan-content').textContent = JSON.stringify(data, null, 2);
         document.getElementById('edit-plan-modal').style.display = 'flex';
-    } catch (e) { alert('Could not load edit plan'); }
+    } catch (e) { showToast('Could not load edit plan', 'error'); }
 }
 
 function closeModal() {
@@ -470,17 +714,17 @@ function setupColorSync() {
     const ah = document.getElementById('brand-accent-hex');
     if (p && ph) {
         p.addEventListener('input', () => { ph.value = p.value; });
-        ph.addEventListener('input', () => { p.value = ph.value; });
+        ph.addEventListener('input', () => { if (/^#[0-9a-fA-F]{6}$/.test(ph.value)) p.value = ph.value; });
     }
     if (a && ah) {
         a.addEventListener('input', () => { ah.value = a.value; });
-        ah.addEventListener('input', () => { a.value = ah.value; });
+        ah.addEventListener('input', () => { if (/^#[0-9a-fA-F]{6}$/.test(ah.value)) a.value = ah.value; });
     }
 }
 
 async function saveBrand() {
     const name = document.getElementById('brand-name').value.trim();
-    if (!name) { alert('Enter a brand name'); return; }
+    if (!name) { showToast('Enter a brand name', 'warn'); return; }
     const config = {
         primary_color: document.getElementById('brand-primary').value,
         accent_color: document.getElementById('brand-accent').value,
@@ -491,34 +735,70 @@ async function saveBrand() {
         emphasis_style: document.getElementById('brand-emphasis').value,
     };
     try {
-        await fetch(`${API}/api/brands/${name}`, {
+        const res = await fetch(`${API}/api/brands/${encodeURIComponent(name)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config),
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const select = document.getElementById('brand-select');
         let found = false;
         for (const opt of select.options) { if (opt.value === name) { found = true; break; } }
-        if (!found) { const opt = document.createElement('option'); opt.value = name; opt.textContent = name; select.appendChild(opt); }
+        if (!found) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
         select.value = name;
         state.brand = name;
+        saveState();
         loadBrands();
-    } catch (e) { alert(`Failed: ${e.message}`); }
+        showToast(`Brand "${name}" saved`, 'ok');
+    } catch (e) {
+        showToast(`Failed to save brand: ${e.message}`, 'error');
+    }
 }
 
 async function loadBrands() {
     try {
         const res = await fetch(`${API}/api/brands`);
+        if (!res.ok) return;
         const data = await res.json();
         const list = document.getElementById('brands-list');
+        const select = document.getElementById('brand-select');
+
         if (data.brands && data.brands.length) {
-            list.innerHTML = data.brands.map(b =>
-                `<div class="brand-item" onclick="selectBrand('${b}')">${b}</div>`
-            ).join('');
+            list.innerHTML = data.brands.map(b => {
+                const active = b === state.brand ? ' brand-active' : '';
+                return `<div class="brand-item${active}" onclick="selectBrandFromList('${b}')">${b}</div>`;
+            }).join('');
+
+            // Sync custom brands into the dropdown
+            data.brands.forEach(b => {
+                let found = false;
+                for (const opt of select.options) { if (opt.value === b) { found = true; break; } }
+                if (!found) {
+                    const opt = document.createElement('option');
+                    opt.value = b;
+                    opt.textContent = b;
+                    select.appendChild(opt);
+                }
+            });
+            if (state.brand) select.value = state.brand;
         } else {
             list.innerHTML = '<div class="empty-state"><span>No custom brands</span></div>';
         }
     } catch (e) {}
+}
+
+function selectBrandFromList(name) {
+    selectBrand(name);
+    // Highlight active brand in list
+    document.querySelectorAll('.brand-item').forEach(el => {
+        el.classList.toggle('brand-active', el.textContent === name);
+    });
 }
 
 /* ─── Jobs ─────────────────────────────────────────────────────────────── */
@@ -526,15 +806,17 @@ async function loadBrands() {
 async function loadJobs() {
     try {
         const res = await fetch(`${API}/api/jobs`);
+        if (!res.ok) return;
         const data = await res.json();
         const list = document.getElementById('jobs-list');
         if (data.jobs && data.jobs.length) {
-            list.innerHTML = data.jobs.slice(0, 20).map(j =>
-                `<div class="job-item" onclick="loadJob('${j.job_id}')">
-                    <div>${j.job_id.slice(0,8)}...</div>
+            list.innerHTML = data.jobs.slice(0, 20).map(j => {
+                const statusClass = j.status === 'complete' ? 'job-done' : j.status === 'error' ? 'job-error' : 'job-active';
+                return `<div class="job-item ${statusClass}" onclick="loadJob('${j.job_id}')">
+                    <div>${j.job_id.slice(0, 8)}...</div>
                     <div class="job-status">${j.status}</div>
-                </div>`
-            ).join('');
+                </div>`;
+            }).join('');
         } else {
             list.innerHTML = '<div class="empty-state"><span>No jobs yet</span></div>';
         }
@@ -544,17 +826,29 @@ async function loadJobs() {
 async function loadJob(jobId) {
     try {
         const res = await fetch(`${API}/api/status/${jobId}`);
+        if (!res.ok) return;
         const data = await res.json();
+        state.jobId = jobId;
+
         if (data.status === 'complete') {
-            state.jobId = jobId;
             const video = document.getElementById('preview-video');
             video.src = `${API}/api/download/${jobId}`;
             video.style.display = 'block';
             document.getElementById('viewer-placeholder').style.display = 'none';
             document.getElementById('results-bar').style.display = 'flex';
             document.getElementById('result-title').textContent = data.output?.title || 'Edit';
+            document.getElementById('result-meta').textContent =
+                `${data.output?.duration || 0}s | ${data.output?.size_mb || 0} MB`;
+            buildEditTimeline();
+            showToast('Job loaded', 'ok');
+        } else if (data.status === 'error') {
+            showToast(`Job failed: ${data.error || 'Unknown error'}`, 'error');
+        } else {
+            showToast(`Job is ${data.status}`, 'info');
         }
-    } catch (e) {}
+    } catch (e) {
+        showToast('Could not load job', 'error');
+    }
 }
 
 /* ─── Reset ────────────────────────────────────────────────────────────── */
@@ -577,15 +871,21 @@ function resetWorkflow() {
     document.getElementById('track-audio-lane').innerHTML = '';
     document.getElementById('track-captions-lane').innerHTML = '';
 
-    document.getElementById('preview-video').style.display = 'none';
-    document.getElementById('preview-video').src = '';
+    const video = document.getElementById('preview-video');
+    video.style.display = 'none';
+    video.removeAttribute('src');
+    video.load();
     document.getElementById('viewer-placeholder').style.display = 'flex';
     document.getElementById('viewer-title').textContent = 'Viewer';
+    document.getElementById('viewer-timecode').textContent = '00:00:00:00';
+    document.getElementById('btn-play').textContent = '\u25B6';
     document.getElementById('results-bar').style.display = 'none';
     document.getElementById('timeline-progress').style.display = 'none';
-    document.getElementById('instructions').value = '';
+    document.getElementById('timeline-info').textContent = '';
 
-    updateProcessButton();
+    resetProcessButton();
+    buildRuler();
+    showToast('Project reset', 'info');
 }
 
 /* ─── Version & Updates ────────────────────────────────────────────────── */
@@ -593,6 +893,7 @@ function resetWorkflow() {
 async function fetchVersion() {
     try {
         const res = await fetch(`${API}/api/info`);
+        if (!res.ok) return;
         const data = await res.json();
         if (data.version) {
             document.getElementById('version-label').textContent = `v${data.version}`;
@@ -605,6 +906,7 @@ async function checkForUpdates(showModal) {
     const force = showModal ? '1' : '0';
     try {
         const res = await fetch(`${API}/api/update/check?force=${force}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
         document.getElementById('update-local').textContent = data.local || '--';
@@ -659,7 +961,6 @@ async function applyUpdate() {
             status.textContent = `Updated to v${data.version}! Restarting server...`;
             status.className = 'update-status up-to-date';
             document.getElementById('update-badge').style.display = 'none';
-
             setTimeout(() => {
                 status.textContent = 'Reloading page...';
                 setTimeout(() => window.location.reload(), 3000);
@@ -685,13 +986,13 @@ function closeUpdateModal() {
 
 setInterval(() => {
     const video = document.getElementById('preview-video');
-    if (video && video.src && !video.paused) {
-        const t = video.currentTime;
+    if (video && video.src && video.src !== window.location.href) {
+        const t = video.currentTime || 0;
         const h = Math.floor(t / 3600);
         const m = Math.floor((t % 3600) / 60);
         const s = Math.floor(t % 60);
         const f = Math.floor((t % 1) * 30);
         document.getElementById('viewer-timecode').textContent =
-            `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
+            `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
     }
 }, 33);

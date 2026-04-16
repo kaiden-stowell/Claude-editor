@@ -1101,6 +1101,55 @@ body {
     justify-content: center;
 }
 
+/* ─── Toast Notifications ──────────────────────────────────────────────── */
+
+#toast-container {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 6px;
+    pointer-events: none;
+}
+.toast {
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-weight: 500;
+    color: white;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: auto;
+    max-width: 320px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast-ok { background: #2a5a2a; border-left: 3px solid var(--green); }
+.toast-error { background: #5a2a2a; border-left: 3px solid var(--red); }
+.toast-warn { background: #5a4a2a; border-left: 3px solid var(--yellow); }
+.toast-info { background: #2a3a5a; border-left: 3px solid var(--blue); }
+
+/* ─── Active Brand ─────────────────────────────────────────────────────── */
+
+.brand-item.brand-active {
+    background: var(--blue-glow);
+    border-left: 3px solid var(--blue);
+}
+
+/* ─── Job Status Colors ────────────────────────────────────────────────── */
+
+.job-item.job-done .job-status { color: var(--green); }
+.job-item.job-error .job-status { color: var(--red); }
+.job-item.job-active .job-status { color: var(--yellow); }
+
+/* ─── Spinner ──────────────────────────────────────────────────────────── */
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* ─── Resize Handle ───────────────────────────────────────────────────── */
 
 .top-section { resize: vertical; overflow: hidden; }
