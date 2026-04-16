@@ -11,7 +11,8 @@ PORT=12795
 
 echo ""
 echo "============================================"
-echo "  Claude Editor — AI Video Editor Installer"
+echo "  Claude Editor v2.0.0 — Director's Cut"
+echo "  Premium AI Video Editor Installer"
 echo "============================================"
 echo ""
 

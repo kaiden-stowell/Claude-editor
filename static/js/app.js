@@ -16,6 +16,7 @@ let state = {
 
 document.addEventListener('DOMContentLoaded', () => {
     checkHealth();
+    fetchVersion();
 
     // Make dropzones clickable
     document.querySelectorAll('.dropzone').forEach(dz => {
@@ -40,6 +41,22 @@ document.addEventListener('DOMContentLoaded', () => {
         accentHex.addEventListener('input', () => { accent.value = accentHex.value; });
     }
 });
+
+/* ─── Version ──────────────────────────────────────────────────────────── */
+
+async function fetchVersion() {
+    try {
+        const res = await fetch(`${API}/api/info`);
+        const data = await res.json();
+        const el = document.getElementById('app-version');
+        if (el && data.version) {
+            el.textContent = `v${data.version}`;
+            el.title = data.full || '';
+        }
+    } catch (e) {
+        // Non-critical
+    }
+}
 
 /* ─── Health Check ─────────────────────────────────────────────────────── */
 

@@ -19,6 +19,7 @@ import time
 from flask import Flask, request, jsonify, send_file, render_template, Response
 from flask_cors import CORS
 from config import Config
+from version import VERSION, FULL_VERSION, CODENAME, version_info
 from editor.analyzer import analyze_video
 from editor.transcriber import transcribe_video
 from editor.ai_director import create_edit_plan
@@ -206,10 +207,10 @@ def health():
 
 @app.route('/api/info')
 def info():
-    """Return editor capabilities for agent discovery."""
+    """Return editor capabilities and version for agent discovery."""
     return jsonify({
         'name': 'Claude Editor',
-        'version': '1.0.0',
+        **version_info(),
         'description': 'AI video editor — learns style from example videos, edits raw footage with on-brand captions',
         'capabilities': [
             'style_analysis',
@@ -219,6 +220,25 @@ def info():
             'reel_format',
             'landscape_format',
             'square_format',
+            'lut_color_grading',
+            'speed_ramping',
+            'film_grain',
+            'vignette',
+            'audio_normalization',
+            'noise_reduction',
+            'voice_enhancement',
+            'silence_removal',
+            'word_by_word_captions',
+            '30_plus_transitions',
+            'video_stabilization',
+            'chroma_key',
+            'beat_sync',
+            'motion_graphics',
+            'auto_reframe',
+            'multi_platform_export',
+            'thumbnail_generation',
+            'watermarking',
+            'picture_in_picture',
         ],
         'supported_formats': ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'],
         'output_formats': ['reel', 'landscape', 'square', 'match'],
@@ -229,6 +249,14 @@ def info():
             'status': 'GET /api/status/<job_id>',
             'download': 'GET /api/download/<job_id>',
             'brands': 'GET /api/brands',
+            'effects': 'GET /api/premium/effects',
+            'transitions': 'GET /api/premium/transitions',
+            'stabilize': 'POST /api/premium/stabilize',
+            'chroma_key': 'POST /api/premium/chroma-key',
+            'beat_sync': 'POST /api/premium/beat-sync',
+            'auto_reframe': 'POST /api/premium/auto-reframe',
+            'export': 'POST /api/premium/export/<job_id>',
+            'thumbnail': 'POST /api/premium/thumbnail/<job_id>',
         },
     })
 
@@ -918,8 +946,8 @@ def api_templates():
 if __name__ == '__main__':
     print()
     print("=" * 60)
-    print("  Claude Editor — AI Video Editor")
-    print("  Agent-ready | Reel-optimized | On-brand captions")
+    print(f"  {FULL_VERSION}")
+    print(f"  Premium AI Video Editor")
     print("=" * 60)
 
     issues = []
